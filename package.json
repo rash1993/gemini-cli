@@ -55,6 +55,10 @@
   "bin": {
     "gemini": "bundle/gemini.js"
   },
+  "exports": {
+    "./agent": "./packages/cli/src/nonInteractiveCli.ts",
+    "./core": "./packages/core/index.ts"
+  },
   "files": [
     "bundle/",
     "README.md",

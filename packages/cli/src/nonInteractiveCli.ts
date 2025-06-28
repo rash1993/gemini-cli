@@ -43,12 +43,15 @@ function getResponseText(response: GenerateContentResponse): string | null {
   return null;
 }
 
+import { Writable } from 'stream';
+
 export async function runNonInteractive(
   config: Config,
   input: string,
+  outputStream: Writable = process.stdout,
 ): Promise<void> {
   // Handle EPIPE errors when the output is piped to a command that closes early.
-  process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  outputStream.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EPIPE') {
       // Exit gracefully if the pipe is closed.
       process.exit(0);
@@ -83,7 +86,7 @@ export async function runNonInteractive(
         }
         const textPart = getResponseText(resp);
         if (textPart) {
-          process.stdout.write(textPart);
+          outputStream.write(textPart);
         }
         if (resp.functionCalls) {
           functionCalls.push(...resp.functionCalls);
@@ -136,7 +139,7 @@ export async function runNonInteractive(
         }
         currentMessages = [{ role: 'user', parts: toolResponseParts }];
       } else {
-        process.stdout.write('\n'); // Ensure a final newline
+        outputStream.write('\n'); // Ensure a final newline
         return;
       }
     }
