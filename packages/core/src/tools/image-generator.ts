@@ -25,7 +25,7 @@ export interface ImageGeneratorParams {
 export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResult> {
   static readonly Name: string = 'generate_image';
   private backendUrl: string;
-  private backendSecretKey: string;
+  private backendApiKey: string;
 
   constructor(private readonly config?: Config) {
     super(
@@ -63,16 +63,16 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
     
     // Get backend configuration from environment or config
     this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendSecretKey = process.env.BACKEND_SECRET_KEY || config?.getBackendSecretKey() || '';
+    this.backendApiKey = process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
     
-    if (!this.backendUrl || !this.backendSecretKey) {
-      console.warn('[ImageGeneratorTool] Backend URL or secret key not configured. Set BACKEND_URL and BACKEND_SECRET_KEY environment variables.');
+    if (!this.backendUrl || !this.backendApiKey) {
+      console.warn('[ImageGeneratorTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.');
     }
   }
 
-  validateParams(params: ImageGeneratorParams): string | null {
-    if (!this.backendUrl || !this.backendSecretKey) {
-      return 'Backend URL or secret key not configured. Please set BACKEND_URL and BACKEND_SECRET_KEY environment variables.';
+  validateToolParams(params: ImageGeneratorParams): string | null {
+    if (!this.backendUrl || !this.backendApiKey) {
+      return 'Backend URL or API key not configured. Please set BACKEND_URL and BACKEND_API_KEY environment variables.';
     }
 
     if (
@@ -113,7 +113,7 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
   }
 
   async execute(params: ImageGeneratorParams, signal: AbortSignal): Promise<ToolResult> {
-    const validationError = this.validateParams(params);
+    const validationError = this.validateToolParams(params);
     if (validationError) {
       return {
         llmContent: JSON.stringify({ success: false, error: validationError }),
@@ -198,7 +198,7 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.backendSecretKey}`,
+        'BACKEND-API-KEY': this.backendApiKey,
       },
       body: JSON.stringify({
         prompt: params.prompt,
@@ -241,7 +241,7 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
       try {
         const response = await fetch(`${this.backendUrl}/image-generation/${sessionId}/get_image`, {
           headers: {
-            'Authorization': `Bearer ${this.backendSecretKey}`,
+            'BACKEND-API-KEY': this.backendApiKey,
           },
         });
 

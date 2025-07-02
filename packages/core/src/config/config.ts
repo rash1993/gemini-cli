@@ -29,6 +29,7 @@ import {
 import { WebSearchTool } from '../tools/web-search.js';
 import { CalculatorTool } from '../tools/calculator.js';
 import { ImageGeneratorTool } from '../tools/image-generator.js';
+import { AudioGeneratorTool } from '../tools/audio-generator.js';
 import { TranscriptionTool } from '../tools/transcription.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
@@ -463,6 +464,10 @@ export class Config {
   getBackendSecretKey(): string | undefined {
     return process.env.BACKEND_SECRET_KEY;
   }
+
+  getBackendApiKey(): string | undefined {
+    return process.env.BACKEND_API_KEY;
+  }
 }
 
 export function createToolRegistry(config: Config): Promise<ToolRegistry> {
@@ -512,6 +517,7 @@ export function createToolRegistry(config: Config): Promise<ToolRegistry> {
   registerCoreTool(WebSearchTool, config);
   registerCoreTool(CalculatorTool);
   registerCoreTool(ImageGeneratorTool, config);
+  registerCoreTool(AudioGeneratorTool, config);
   registerCoreTool(TranscriptionTool, config);
   return (async () => {
     await registry.discoverTools();

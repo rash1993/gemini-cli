@@ -55,6 +55,7 @@ export * from './tools/web-search.js';
 export * from './tools/read-many-files.js';
 export * from './tools/calculator.js';
 export * from './tools/image-generator.js';
+export * from './tools/audio-generator.js';
 export * from './tools/transcription.js';
 export * from './tools/mcp-client.js';
 export * from './tools/mcp-tool.js';
