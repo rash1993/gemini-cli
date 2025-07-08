@@ -49,11 +49,13 @@ export class CalculatorTool extends BaseTool<CalculatorParams, ToolResult> {
           },
           a: {
             type: 'number',
-            description: 'First number (required for add and multiply operations)',
+            description:
+              'First number (required for add and multiply operations)',
           },
           b: {
             type: 'number',
-            description: 'Second number (required for add and multiply operations)',
+            description:
+              'Second number (required for add and multiply operations)',
           },
           name: {
             type: 'string',
@@ -141,17 +143,21 @@ export class CalculatorTool extends BaseTool<CalculatorParams, ToolResult> {
       }
 
       return {
-        llmContent: JSON.stringify({ 
-          success: true, 
+        llmContent: JSON.stringify({
+          success: true,
           operation,
           result,
-          message 
+          message,
         }),
         returnDisplay: message,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[CalculatorTool] Error executing ${operation}:`, errorMessage);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        `[CalculatorTool] Error executing ${operation}:`,
+        errorMessage,
+      );
       return {
         llmContent: JSON.stringify({
           success: false,

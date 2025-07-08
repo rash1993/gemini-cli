@@ -22,7 +22,7 @@ describe('AudioGeneratorTool', () => {
       getBackendUrl: () => 'https://test-backend.com',
       getBackendSecretKey: () => 'test-secret-key',
     } as Config;
-    
+
     tool = new AudioGeneratorTool(mockConfig);
     vi.clearAllMocks();
   });
@@ -40,10 +40,10 @@ describe('AudioGeneratorTool', () => {
     it('should use environment variables when config is not provided', () => {
       process.env.BACKEND_URL = 'https://env-backend.com';
       process.env.BACKEND_SECRET_KEY = 'env-secret';
-      
+
       const envTool = new AudioGeneratorTool();
       expect(envTool).toBeDefined();
-      
+
       delete process.env.BACKEND_URL;
       delete process.env.BACKEND_SECRET_KEY;
     });
@@ -56,7 +56,7 @@ describe('AudioGeneratorTool', () => {
         language_code: 'en-US',
         voice_name: 'en-US-Journey-D',
       };
-      
+
       expect(tool.validateToolParams(params)).toBeNull();
     });
 
@@ -66,7 +66,7 @@ describe('AudioGeneratorTool', () => {
         language_code: 'en-US',
         voice_name: 'en-US-Journey-D',
       };
-      
+
       const error = tool.validateToolParams(params);
       expect(error).toContain('text parameter cannot be empty');
     });
@@ -77,7 +77,7 @@ describe('AudioGeneratorTool', () => {
         language_code: 'en-US',
         voice_name: 'en-US-Journey-D',
       };
-      
+
       const error = tool.validateToolParams(params);
       expect(error).toContain('text is too long');
     });
@@ -89,7 +89,7 @@ describe('AudioGeneratorTool', () => {
         voice_name: 'en-US-Journey-D',
         method: 'invalid_method' as any,
       };
-      
+
       const error = tool.validateToolParams(params);
       expect(error).toContain('Invalid method');
     });
@@ -100,7 +100,7 @@ describe('AudioGeneratorTool', () => {
         voice_name: 'Aoede',
         method: 'Chirp_gemini',
       };
-      
+
       expect(tool.validateToolParams(params)).toBeNull();
     });
 
@@ -110,7 +110,7 @@ describe('AudioGeneratorTool', () => {
         voice_name: 'invalid-voice',
         method: 'Chirp_gemini',
       };
-      
+
       const error = tool.validateToolParams(params);
       expect(error).toContain('Invalid Chirp_gemini voice');
     });
@@ -122,7 +122,7 @@ describe('AudioGeneratorTool', () => {
         language_code: 'en-US',
         voice_name: 'en-US-Journey-D',
       };
-      
+
       const error = unconfiguredTool.validateToolParams(params);
       expect(error).toContain('Backend URL or secret key not configured');
     });
@@ -135,7 +135,7 @@ describe('AudioGeneratorTool', () => {
         language_code: 'en-US',
         voice_name: 'en-US-Journey-D',
       };
-      
+
       const description = tool.getDescription(params);
       expect(description).toContain('Hello world');
       expect(description).toContain('en-US');
@@ -148,7 +148,7 @@ describe('AudioGeneratorTool', () => {
         voice_name: 'Aoede',
         method: 'Chirp_gemini',
       };
-      
+
       const description = tool.getDescription(params);
       expect(description).toContain('Hello world');
       expect(description).toContain('Aoede');
@@ -163,10 +163,10 @@ describe('AudioGeneratorTool', () => {
         language_code: 'en-US',
         voice_name: 'en-US-Journey-D',
       };
-      
+
       const signal = new AbortController().signal;
       const result = await tool.execute(params, signal);
-      
+
       expect(result.llmContent).toContain('"success":false');
       expect(result.returnDisplay).toContain('Error:');
     });
@@ -196,7 +196,7 @@ describe('AudioGeneratorTool', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer test-secret-key',
+            Authorization: 'Bearer test-secret-key',
           },
           body: JSON.stringify({
             text: 'Hello world',
@@ -205,7 +205,7 @@ describe('AudioGeneratorTool', () => {
             conversation_id: undefined,
             method: 'standard',
           }),
-        })
+        }),
       );
 
       expect(result.llmContent).toContain('"success":true');
@@ -273,7 +273,7 @@ describe('AudioGeneratorTool', () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"conversation_id":"test-conv-id"'),
-        })
+        }),
       );
     });
 
@@ -300,7 +300,7 @@ describe('AudioGeneratorTool', () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"method":"Chirp_gemini"'),
-        })
+        }),
       );
     });
   });

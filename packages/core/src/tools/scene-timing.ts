@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BaseTool, ToolResult } from './tools.js';
-import { SchemaValidator } from '../utils/schemaValidator.js';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { Config } from '../config/config.js';
+import { SchemaValidator } from '../utils/schemaValidator.js';
+import { BaseTool, ToolResult } from './tools.js';
 
 /**
  * Input for a single scene
@@ -24,6 +26,7 @@ export interface SceneTimingParams {
   audio_url: string;
   similarity_threshold?: number;
   language_code?: string;
+  output_directory?: string;
 }
 
 /**
@@ -50,45 +53,56 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
               properties: {
                 scene_id: {
                   type: 'string',
-                  description: 'Unique identifier for the scene'
+                  description: 'Unique identifier for the scene',
                 },
                 text: {
                   type: 'string',
-                  description: 'Narration text for the scene'
-                }
+                  description: 'Narration text for the scene',
+                },
               },
-              required: ['scene_id', 'text']
+              required: ['scene_id', 'text'],
             },
             description: 'List of scenes with their narration text',
-            minItems: 1
+            minItems: 1,
           },
           audio_url: {
             type: 'string',
-            description: 'URL of the audio file (GCS URL or public URL) to map scenes against'
+            description:
+              'URL of the audio file (GCS URL or public URL) to map scenes against',
           },
           similarity_threshold: {
             type: 'number',
             minimum: 0,
             maximum: 1,
-            description: 'Threshold for scene-to-word matching (0.0-1.0). Higher values require more exact matches. Defaults to 0.9',
-            default: 0.9
+            description:
+              'Threshold for scene-to-word matching (0.0-1.0). Higher values require more exact matches. Defaults to 0.9',
+            default: 0.9,
           },
           language_code: {
             type: 'string',
-            description: 'Language code for transcription (e.g., en-US, es-ES, fr-FR). Defaults to en-US',
-            default: 'en-US'
-          }
+            description:
+              'Language code for transcription (e.g., en-US, es-ES, fr-FR). Defaults to en-US',
+            default: 'en-US',
+          },
+          output_directory: {
+            type: 'string',
+            description:
+              'Video project root directory (will save timing data to slides/slide-XXX/info.json). If not provided, timings are only returned in the output.',
+          },
         },
-        required: ['scenes', 'audio_url']
-      }
+        required: ['scenes', 'audio_url'],
+      },
     );
-    
+
     // Get backend configuration from environment or config
     this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendApiKey = process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
-    
+    this.backendApiKey =
+      process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
+
     if (!this.backendUrl || !this.backendApiKey) {
-      console.warn('[SceneTimingTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.');
+      console.warn(
+        '[SceneTimingTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.',
+      );
     }
   }
 
@@ -107,7 +121,11 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       return 'Parameters failed schema validation. Check scenes array and audio_url.';
     }
 
-    if (!params.scenes || !Array.isArray(params.scenes) || params.scenes.length === 0) {
+    if (
+      !params.scenes ||
+      !Array.isArray(params.scenes) ||
+      params.scenes.length === 0
+    ) {
       return 'The scenes parameter must be a non-empty array.';
     }
 
@@ -116,7 +134,11 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       if (!scene.scene_id || typeof scene.scene_id !== 'string') {
         return `Scene ${i + 1} must have a valid scene_id string.`;
       }
-      if (!scene.text || typeof scene.text !== 'string' || scene.text.trim() === '') {
+      if (
+        !scene.text ||
+        typeof scene.text !== 'string' ||
+        scene.text.trim() === ''
+      ) {
         return `Scene ${i + 1} must have non-empty text.`;
       }
     }
@@ -125,15 +147,27 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       return 'The audio_url parameter must be a valid string.';
     }
 
-    if (params.similarity_threshold !== undefined && 
-        (typeof params.similarity_threshold !== 'number' || 
-         params.similarity_threshold < 0 || 
-         params.similarity_threshold > 1)) {
+    if (
+      params.similarity_threshold !== undefined &&
+      (typeof params.similarity_threshold !== 'number' ||
+        params.similarity_threshold < 0 ||
+        params.similarity_threshold > 1)
+    ) {
       return 'The similarity_threshold must be a number between 0 and 1.';
     }
 
-    if (params.language_code !== undefined && typeof params.language_code !== 'string') {
+    if (
+      params.language_code !== undefined &&
+      typeof params.language_code !== 'string'
+    ) {
       return 'The language_code must be a string.';
+    }
+
+    if (
+      params.output_directory !== undefined &&
+      typeof params.output_directory !== 'string'
+    ) {
+      return 'The output_directory must be a string.';
     }
 
     return null;
@@ -146,7 +180,10 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
     return `Mapping ${sceneCount} scene${sceneCount > 1 ? 's' : ''} to audio timings (threshold: ${threshold}, language: ${language})`;
   }
 
-  async execute(params: SceneTimingParams, signal: AbortSignal): Promise<ToolResult> {
+  async execute(
+    params: SceneTimingParams,
+    signal: AbortSignal,
+  ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
     if (validationError) {
       return {
@@ -159,7 +196,8 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       scenes,
       audio_url,
       similarity_threshold = 0.9,
-      language_code = 'en-US'
+      language_code = 'en-US',
+      output_directory,
     } = params;
 
     try {
@@ -168,31 +206,94 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
         throw new Error('Scene timing mapping was cancelled');
       }
 
-      console.log(`[SceneTimingTool] Starting scene timing mapping for ${scenes.length} scenes`);
-      
+      console.log(
+        `[SceneTimingTool] Starting scene timing mapping for ${scenes.length} scenes`,
+      );
+
       // Step 1: Create session
       const sessionId = await this.createSession({
         scenes,
         audio_url,
         similarity_threshold,
-        language_code
+        language_code,
       });
-      
+
       console.log(`[SceneTimingTool] Session created: ${sessionId}`);
-      
+
       // Step 2: Start processing
       await this.startProcessing(sessionId);
-      
+
       // Step 3: Poll for completion
       const result = await this.pollForCompletion(sessionId, signal);
-      
-      if (result.success && result.scene_mappings && result.scene_mappings.length > 0) {
+
+      if (
+        result.success &&
+        result.scene_mappings &&
+        result.scene_mappings.length > 0
+      ) {
         const mappedCount = result.scene_mappings.length;
         const unmappedCount = result.unmapped_scenes?.length || 0;
         const processingTime = result.processing_time || 0;
-        
-        const successMessage = `Successfully mapped ${mappedCount} scene${mappedCount > 1 ? 's' : ''} to audio timings`;
-        
+
+        let successMessage = `Successfully mapped ${mappedCount} scene${mappedCount > 1 ? 's' : ''} to audio timings`;
+
+        if (output_directory) {
+          try {
+            // Create slides directory if it doesn't exist
+            const slidesDir = path.join(output_directory, 'slides');
+            await fs.mkdir(slidesDir, { recursive: true });
+            
+            for (const scene of result.scene_mappings) {
+              // Create slide directory
+              const slideDir = path.join(slidesDir, scene.scene_id);
+              await fs.mkdir(slideDir, { recursive: true });
+              
+              // Check if info.json already exists
+              const infoJsonPath = path.join(slideDir, 'info.json');
+              let existingInfo: any = {};
+              
+              try {
+                const existingContent = await fs.readFile(infoJsonPath, 'utf-8');
+                existingInfo = JSON.parse(existingContent);
+              } catch (e) {
+                // File doesn't exist or is invalid, use empty object
+              }
+              
+              // Update info.json with timing data
+              const updatedInfo = {
+                ...existingInfo,
+                scene_id: scene.scene_id,
+                title: scene.title || existingInfo.title || `Scene ${scene.scene_id}`,
+                script_text: scene.content || existingInfo.script_text,
+                start_time: scene.start_time,
+                end_time: scene.end_time,
+                word_wise_timings: scene.words.map((w) => ({
+                  word: w.word,
+                  start_time: w.start_time,
+                  end_time: w.end_time,
+                  confidence: w.confidence
+                })),
+                generation_metadata: {
+                  ...existingInfo.generation_metadata,
+                  last_modified: new Date().toISOString(),
+                  timing_updated: new Date().toISOString()
+                }
+              };
+              
+              await fs.writeFile(
+                infoJsonPath,
+                JSON.stringify(updatedInfo, null, 2),
+              );
+            }
+            successMessage += `
+Timing data updated in slide directories: ${slidesDir}`;
+          } catch (e) {
+            console.error(`[SceneTimingTool] Error writing timing files:`, e);
+            successMessage += `
+Warning: Could not write timing files to ${output_directory}.`;
+          }
+        }
+
         return {
           llmContent: JSON.stringify({
             success: true,
@@ -204,17 +305,21 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
             unmapped_scenes: result.unmapped_scenes || [],
             message: successMessage,
           }),
-          returnDisplay: `✅ ${successMessage}\\n\\n📊 Results:\\n- Mapped: ${mappedCount} scenes\\n- Unmapped: ${unmappedCount} scenes\\n- Processing time: ${processingTime.toFixed(2)}s\\n\\n🎬 Scene Timings:\\n${result.scene_mappings.map((scene, i) => `${i + 1}. ${scene.scene_id}: ${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s`).join('\\n')}\\n\\n💾 Session ID: ${sessionId}`,
+          returnDisplay: `✅ ${successMessage}\n\n📊 Results:\n- Mapped: ${mappedCount} scenes\n- Unmapped: ${unmappedCount} scenes\n- Processing time: ${processingTime.toFixed(2)}s\n\n🎬 Scene Timings:\n${result.scene_mappings.map((scene, i) => `${i + 1}. ${scene.scene_id}: ${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s`).join('\n')}\n\n💾 Session ID: ${sessionId}`,
         };
       } else {
-        const errorMessage = result.error || 'Scene timing mapping failed with unknown error';
+        const errorMessage =
+          result.error || 'Scene timing mapping failed with unknown error';
         throw new Error(errorMessage);
       }
-      
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[SceneTimingTool] Error in scene timing mapping:`, errorMessage);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        `[SceneTimingTool] Error in scene timing mapping:`,
+        errorMessage,
+      );
+
       return {
         llmContent: JSON.stringify({
           success: false,
@@ -234,24 +339,29 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
     similarity_threshold: number;
     language_code: string;
   }): Promise<string> {
-    const response = await fetch(`${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'BACKEND-API-KEY': this.backendApiKey,
+    const response = await fetch(
+      `${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'BACKEND-API-KEY': this.backendApiKey,
+        },
+        body: JSON.stringify({
+          audio_gcs_url: params.audio_url,
+          scenes: params.scenes,
+          similarity_threshold: params.similarity_threshold,
+          language_code: params.language_code,
+          store_type: 'mongodb',
+        }),
       },
-      body: JSON.stringify({
-        audio_gcs_url: params.audio_url,
-        scenes: params.scenes,
-        similarity_threshold: params.similarity_threshold,
-        language_code: params.language_code,
-        store_type: 'mongodb'
-      }),
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to create session: ${response.status} ${errorText}`);
+      throw new Error(
+        `Failed to create session: ${response.status} ${errorText}`,
+      );
     }
 
     const result = await response.json();
@@ -266,26 +376,35 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
    * Start processing a session
    */
   private async startProcessing(sessionId: string): Promise<void> {
-    const response = await fetch(`${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions/${sessionId}/process`, {
-      method: 'POST',
-      headers: {
-        'BACKEND-API-KEY': this.backendApiKey,
+    const response = await fetch(
+      `${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions/${sessionId}/process`,
+      {
+        method: 'POST',
+        headers: {
+          'BACKEND-API-KEY': this.backendApiKey,
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to start processing: ${response.status} ${errorText}`);
+      throw new Error(
+        `Failed to start processing: ${response.status} ${errorText}`,
+      );
     }
   }
 
   /**
    * Poll for scene timing completion
    */
-  private async pollForCompletion(sessionId: string, signal: AbortSignal): Promise<{
+  private async pollForCompletion(
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<{
     success: boolean;
     scene_mappings?: Array<{
       scene_id: string;
+      title?: string;
       start_time: number;
       end_time: number;
       content: string;
@@ -309,50 +428,59 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       }
 
       try {
-        const response = await fetch(`${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions/${sessionId}`, {
-          headers: {
-            'BACKEND-API-KEY': this.backendApiKey,
+        const response = await fetch(
+          `${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions/${sessionId}`,
+          {
+            headers: {
+              'BACKEND-API-KEY': this.backendApiKey,
+            },
           },
-        });
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to check status: ${response.status}`);
         }
 
         const sessionData = await response.json();
-        
-        console.log(`[SceneTimingTool] Session ${sessionId} status: ${sessionData.stage} (${sessionData.status})`);
+
+        console.log(
+          `[SceneTimingTool] Session ${sessionId} status: ${sessionData.stage} (${sessionData.status})`,
+        );
 
         if (sessionData.stage === 'completed') {
           return {
             success: true,
             scene_mappings: sessionData.scene_mappings || [],
             unmapped_scenes: sessionData.unmapped_scenes || [],
-            processing_time: sessionData.processing_time || 0
+            processing_time: sessionData.processing_time || 0,
           };
         } else if (sessionData.stage === 'error') {
           return {
             success: false,
-            error: sessionData.error || 'Scene timing mapping failed'
+            error: sessionData.error || 'Scene timing mapping failed',
           };
         }
 
         // Still processing, wait before next poll
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       } catch (error) {
-        console.error(`[SceneTimingTool] Error polling session ${sessionId}:`, error);
-        
+        console.error(
+          `[SceneTimingTool] Error polling session ${sessionId}:`,
+          error,
+        );
+
         // On the last attempt, throw the error
         if (attempt === maxAttempts - 1) {
           throw error;
         }
-        
+
         // Otherwise, wait and retry
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       }
     }
 
-    throw new Error(`Scene timing mapping timed out after ${maxAttempts * pollInterval / 1000} seconds`);
+    throw new Error(
+      `Scene timing mapping timed out after ${(maxAttempts * pollInterval) / 1000} seconds`,
+    );
   }
 }

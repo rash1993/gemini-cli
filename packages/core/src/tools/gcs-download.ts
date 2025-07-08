@@ -36,15 +36,18 @@ export class GCSDownloadTool extends BaseTool<GCSDownloadParams, ToolResult> {
         properties: {
           gcs_url: {
             type: 'string',
-            description: 'The GCS URL to download (e.g., gs://bucket-name/path/to/file.txt)',
+            description:
+              'The GCS URL to download (e.g., gs://bucket-name/path/to/file.txt)',
           },
           local_path: {
             type: 'string',
-            description: 'Local path where the file should be saved. If not provided, saves to current directory with original filename',
+            description:
+              'Local path where the file should be saved. If not provided, saves to current directory with original filename',
           },
           create_directories: {
             type: 'boolean',
-            description: 'Whether to create parent directories if they don\'t exist. Defaults to true',
+            description:
+              "Whether to create parent directories if they don't exist. Defaults to true",
             default: true,
           },
         },
@@ -87,7 +90,10 @@ export class GCSDownloadTool extends BaseTool<GCSDownloadParams, ToolResult> {
     return `Downloading GCS file: ${params.gcs_url} to ${localPath}`;
   }
 
-  async execute(params: GCSDownloadParams, signal: AbortSignal): Promise<ToolResult> {
+  async execute(
+    params: GCSDownloadParams,
+    signal: AbortSignal,
+  ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
     if (validationError) {
       return {
@@ -96,11 +102,7 @@ export class GCSDownloadTool extends BaseTool<GCSDownloadParams, ToolResult> {
       };
     }
 
-    const { 
-      gcs_url, 
-      local_path,
-      create_directories = true 
-    } = params;
+    const { gcs_url, local_path, create_directories = true } = params;
 
     try {
       // Check if operation was cancelled
@@ -126,10 +128,10 @@ export class GCSDownloadTool extends BaseTool<GCSDownloadParams, ToolResult> {
 
       // Use gsutil to download the file
       const { spawn } = await import('child_process');
-      
+
       await new Promise<void>((resolve, reject) => {
         const gsutil = spawn('gsutil', ['cp', gcs_url, targetPath], {
-          stdio: ['pipe', 'pipe', 'pipe']
+          stdio: ['pipe', 'pipe', 'pipe'],
         });
 
         let stdout = '';
@@ -147,7 +149,9 @@ export class GCSDownloadTool extends BaseTool<GCSDownloadParams, ToolResult> {
           if (code === 0) {
             resolve();
           } else {
-            reject(new Error(`gsutil failed with exit code ${code}: ${stderr}`));
+            reject(
+              new Error(`gsutil failed with exit code ${code}: ${stderr}`),
+            );
           }
         });
 
@@ -179,11 +183,11 @@ export class GCSDownloadTool extends BaseTool<GCSDownloadParams, ToolResult> {
         }),
         returnDisplay: `✅ ${successMessage}\n\n📁 GCS URL: ${gcs_url}\n💾 Local Path: ${targetPath}\n📊 File Size: ${fileSizeMB} MB\n📅 Downloaded: ${new Date().toISOString()}`,
       };
-      
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       console.error(`[GCSDownloadTool] Error downloading file:`, errorMessage);
-      
+
       return {
         llmContent: JSON.stringify({
           success: false,

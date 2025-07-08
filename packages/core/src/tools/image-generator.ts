@@ -22,7 +22,10 @@ export interface ImageGeneratorParams {
  * Image Generator tool that creates images from text prompts using a FastAPI backend service.
  * Integrates with existing MediaLoop.AI image generation infrastructure.
  */
-export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResult> {
+export class ImageGeneratorTool extends BaseTool<
+  ImageGeneratorParams,
+  ToolResult
+> {
   static readonly Name: string = 'generate_image';
   private backendUrl: string;
   private backendApiKey: string;
@@ -37,12 +40,20 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
         properties: {
           prompt: {
             type: 'string',
-            description: 'A detailed description of the image to generate. Be specific about style, content, colors, composition, etc.',
+            description:
+              'A detailed description of the image to generate. Be specific about style, content, colors, composition, etc.',
           },
           aspect_ratio: {
             type: 'string',
-            enum: ['square', 'landscape', 'portrait', 'landscape_4_3', 'portrait_3_4'],
-            description: 'The aspect ratio for the generated image. Defaults to landscape',
+            enum: [
+              'square',
+              'landscape',
+              'portrait',
+              'landscape_4_3',
+              'portrait_3_4',
+            ],
+            description:
+              'The aspect ratio for the generated image. Defaults to landscape',
             default: 'landscape',
           },
           negative_prompt: {
@@ -60,13 +71,16 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
         required: ['prompt'],
       },
     );
-    
+
     // Get backend configuration from environment or config
     this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendApiKey = process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
-    
+    this.backendApiKey =
+      process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
+
     if (!this.backendUrl || !this.backendApiKey) {
-      console.warn('[ImageGeneratorTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.');
+      console.warn(
+        '[ImageGeneratorTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.',
+      );
     }
   }
 
@@ -93,12 +107,24 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
       return 'The prompt is too long. Please keep it under 1000 characters.';
     }
 
-    const validAspectRatios = ['square', 'landscape', 'portrait', 'landscape_4_3', 'portrait_3_4'];
-    if (params.aspect_ratio && !validAspectRatios.includes(params.aspect_ratio)) {
+    const validAspectRatios = [
+      'square',
+      'landscape',
+      'portrait',
+      'landscape_4_3',
+      'portrait_3_4',
+    ];
+    if (
+      params.aspect_ratio &&
+      !validAspectRatios.includes(params.aspect_ratio)
+    ) {
       return `Invalid aspect ratio. Must be one of: ${validAspectRatios.join(', ')}`;
     }
 
-    if (params.number_of_images && (params.number_of_images < 1 || params.number_of_images > 10)) {
+    if (
+      params.number_of_images &&
+      (params.number_of_images < 1 || params.number_of_images > 10)
+    ) {
       return 'Number of images must be between 1 and 10.';
     }
 
@@ -109,10 +135,15 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
     const aspectRatio = params.aspect_ratio || 'landscape';
     const numImages = params.number_of_images || 1;
     const description = `Generating ${numImages} image${numImages > 1 ? 's' : ''}: "${params.prompt}" (${aspectRatio})`;
-    return params.negative_prompt ? `${description} [avoiding: ${params.negative_prompt}]` : description;
+    return params.negative_prompt
+      ? `${description} [avoiding: ${params.negative_prompt}]`
+      : description;
   }
 
-  async execute(params: ImageGeneratorParams, signal: AbortSignal): Promise<ToolResult> {
+  async execute(
+    params: ImageGeneratorParams,
+    signal: AbortSignal,
+  ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
     if (validationError) {
       return {
@@ -121,11 +152,11 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
       };
     }
 
-    const { 
-      prompt, 
-      aspect_ratio = 'landscape', 
+    const {
+      prompt,
+      aspect_ratio = 'landscape',
       negative_prompt,
-      number_of_images = 1 
+      number_of_images = 1,
     } = params;
 
     try {
@@ -134,25 +165,29 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
         throw new Error('Image generation was cancelled');
       }
 
-      console.log(`[ImageGeneratorTool] Starting image generation for prompt: "${prompt.substring(0, 50)}..."`);
-      
+      console.log(
+        `[ImageGeneratorTool] Starting image generation for prompt: "${prompt.substring(0, 50)}..."`,
+      );
+
       // Step 1: Initiate image generation
       const sessionId = await this.initiateImageGeneration({
         prompt,
         aspect_ratio,
         negative_prompt,
-        number_of_images
+        number_of_images,
       });
-      
-      console.log(`[ImageGeneratorTool] Image generation session created: ${sessionId}`);
-      
+
+      console.log(
+        `[ImageGeneratorTool] Image generation session created: ${sessionId}`,
+      );
+
       // Step 2: Poll for completion
       const result = await this.pollForCompletion(sessionId, signal);
-      
+
       if (result.success && result.images && result.images.length > 0) {
         const imageCount = result.images.length;
         const successMessage = `Successfully generated ${imageCount} image${imageCount > 1 ? 's' : ''} using Imagen4`;
-        
+
         return {
           llmContent: JSON.stringify({
             success: true,
@@ -167,14 +202,18 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
           returnDisplay: `✅ ${successMessage}\n\n🎨 Prompt: ${prompt}\n📐 Aspect Ratio: ${aspect_ratio}${negative_prompt ? `\n🚫 Negative Prompt: ${negative_prompt}` : ''}\n\n🔗 Generated Images:\n${result.images.map((url, i) => `${i + 1}. ${url}`).join('\n')}\n\n💾 Session ID: ${sessionId}`,
         };
       } else {
-        const errorMessage = result.error || 'Image generation failed with unknown error';
+        const errorMessage =
+          result.error || 'Image generation failed with unknown error';
         throw new Error(errorMessage);
       }
-      
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[ImageGeneratorTool] Error generating image:`, errorMessage);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        `[ImageGeneratorTool] Error generating image:`,
+        errorMessage,
+      );
+
       return {
         llmContent: JSON.stringify({
           success: false,
@@ -194,24 +233,29 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
     negative_prompt?: string;
     number_of_images: number;
   }): Promise<string> {
-    const response = await fetch(`${this.backendUrl}/image-generation/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'BACKEND-API-KEY': this.backendApiKey,
+    const response = await fetch(
+      `${this.backendUrl}/image-generation/generate`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'BACKEND-API-KEY': this.backendApiKey,
+        },
+        body: JSON.stringify({
+          prompt: params.prompt,
+          aspect_ratio: params.aspect_ratio,
+          negative_prompt: params.negative_prompt,
+          number_of_images: params.number_of_images,
+          store_type: 'mongodb',
+        }),
       },
-      body: JSON.stringify({
-        prompt: params.prompt,
-        aspect_ratio: params.aspect_ratio,
-        negative_prompt: params.negative_prompt,
-        number_of_images: params.number_of_images,
-        store_type: 'mongodb',
-      }),
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to initiate image generation: ${response.status} ${errorText}`);
+      throw new Error(
+        `Failed to initiate image generation: ${response.status} ${errorText}`,
+      );
     }
 
     const result = await response.json();
@@ -225,7 +269,10 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
   /**
    * Poll for image generation completion.
    */
-  private async pollForCompletion(sessionId: string, signal: AbortSignal): Promise<{
+  private async pollForCompletion(
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<{
     success: boolean;
     images?: string[];
     error?: string;
@@ -239,19 +286,24 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
       }
 
       try {
-        const response = await fetch(`${this.backendUrl}/image-generation/${sessionId}/get_image`, {
-          headers: {
-            'BACKEND-API-KEY': this.backendApiKey,
+        const response = await fetch(
+          `${this.backendUrl}/image-generation/${sessionId}/get_image`,
+          {
+            headers: {
+              'BACKEND-API-KEY': this.backendApiKey,
+            },
           },
-        });
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to check status: ${response.status}`);
         }
 
         const status = await response.json();
-        
-        console.log(`[ImageGeneratorTool] Session ${sessionId} status: ${status.status} (${status.progress}%)`);
+
+        console.log(
+          `[ImageGeneratorTool] Session ${sessionId} status: ${status.status} (${status.progress}%)`,
+        );
 
         if (status.status === 'completed') {
           return {
@@ -266,21 +318,25 @@ export class ImageGeneratorTool extends BaseTool<ImageGeneratorParams, ToolResul
         }
 
         // Still processing, wait before next poll
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       } catch (error) {
-        console.error(`[ImageGeneratorTool] Error polling session ${sessionId}:`, error);
-        
+        console.error(
+          `[ImageGeneratorTool] Error polling session ${sessionId}:`,
+          error,
+        );
+
         // On the last attempt, throw the error
         if (attempt === maxAttempts - 1) {
           throw error;
         }
-        
+
         // Otherwise, wait and retry
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       }
     }
 
-    throw new Error(`Image generation timed out after ${maxAttempts * pollInterval / 1000} seconds`);
+    throw new Error(
+      `Image generation timed out after ${(maxAttempts * pollInterval) / 1000} seconds`,
+    );
   }
 }

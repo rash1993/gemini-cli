@@ -33,6 +33,7 @@ import { AudioGeneratorTool } from '../tools/audio-generator.js';
 import { TranscriptionTool } from '../tools/transcription.js';
 import { GCSDownloadTool } from '../tools/gcs-download.js';
 import { SceneTimingTool } from '../tools/scene-timing.js';
+import { InitiateSlidesTool } from '../tools/initiate-slides.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { GitService } from '../services/gitService.js';
@@ -523,6 +524,7 @@ export function createToolRegistry(config: Config): Promise<ToolRegistry> {
   registerCoreTool(TranscriptionTool, config);
   registerCoreTool(GCSDownloadTool, config);
   registerCoreTool(SceneTimingTool, config);
+  registerCoreTool(InitiateSlidesTool);
   return (async () => {
     await registry.discoverTools();
     return registry;

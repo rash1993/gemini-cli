@@ -23,9 +23,25 @@ export interface AudioGeneratorParams {
  * Valid voices for standard TTS method by language code
  */
 const VALID_VOICES: Record<string, string[]> = {
-  'en-US': ['en-US-Journey-D', 'en-US-Journey-F', 'en-US-Journey-O', 'en-US-Neural2-A', 'en-US-Neural2-C'],
-  'en-IN': ['en-IN-Chirp-HD-D', 'en-IN-Neural2-A', 'en-IN-Neural2-B', 'en-IN-Neural2-C'],
-  'en-GB': ['en-GB-Journey-D', 'en-GB-Journey-F', 'en-GB-Neural2-A', 'en-GB-Neural2-B'],
+  'en-US': [
+    'en-US-Journey-D',
+    'en-US-Journey-F',
+    'en-US-Journey-O',
+    'en-US-Neural2-A',
+    'en-US-Neural2-C',
+  ],
+  'en-IN': [
+    'en-IN-Chirp-HD-D',
+    'en-IN-Neural2-A',
+    'en-IN-Neural2-B',
+    'en-IN-Neural2-C',
+  ],
+  'en-GB': [
+    'en-GB-Journey-D',
+    'en-GB-Journey-F',
+    'en-GB-Neural2-A',
+    'en-GB-Neural2-B',
+  ],
   'es-ES': ['es-ES-Journey-D', 'es-ES-Journey-F', 'es-ES-Neural2-A'],
   'fr-FR': ['fr-FR-Journey-D', 'fr-FR-Journey-F', 'fr-FR-Neural2-A'],
   'de-DE': ['de-DE-Journey-D', 'de-DE-Journey-F', 'de-DE-Neural2-A'],
@@ -37,14 +53,23 @@ const VALID_VOICES: Record<string, string[]> = {
  * Valid Chirp Gemini voices
  */
 const CHIRP_GEMINI_VOICES = [
-  'Aoede', 'Ariel', 'Charon', 'Fenrir', 'Kore', 'Puck', 'Titan'
+  'Aoede',
+  'Ariel',
+  'Charon',
+  'Fenrir',
+  'Kore',
+  'Puck',
+  'Titan',
 ];
 
 /**
  * Audio Generator tool that creates audio from text using a FastAPI backend service.
  * Supports both standard Google TTS and Chirp Gemini voices.
  */
-export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResult> {
+export class AudioGeneratorTool extends BaseTool<
+  AudioGeneratorParams,
+  ToolResult
+> {
   static readonly Name: string = 'generate_audio';
   private backendUrl: string;
   private backendApiKey: string;
@@ -59,39 +84,47 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
         properties: {
           text: {
             type: 'string',
-            description: 'The text to convert to speech. Maximum 6000 characters.',
+            description:
+              'The text to convert to speech. Maximum 6000 characters.',
           },
           language_code: {
             type: 'string',
-            description: 'Language code for standard TTS (e.g., en-US, en-IN, es-ES). Defaults to en-IN',
+            description:
+              'Language code for standard TTS (e.g., en-US, en-IN, es-ES). Defaults to en-IN',
             default: 'en-IN',
           },
           voice_name: {
             type: 'string',
-            description: 'Voice name. For standard method: depends on language_code. For Chirp_gemini: Aoede, Ariel, Charon, Fenrir, Kore, Puck, or Titan. Defaults to en-IN-Chirp-HD-D',
+            description:
+              'Voice name. For standard method: depends on language_code. For Chirp_gemini: Aoede, Ariel, Charon, Fenrir, Kore, Puck, or Titan. Defaults to en-IN-Chirp-HD-D',
             default: 'en-IN-Chirp-HD-D',
           },
           conversation_id: {
             type: 'string',
-            description: 'Optional conversation ID to associate with the audio generation',
+            description:
+              'Optional conversation ID to associate with the audio generation',
           },
           method: {
             type: 'string',
             enum: ['standard', 'Chirp_gemini'],
-            description: 'Audio generation method. "standard" uses Google TTS, "Chirp_gemini" uses advanced Chirp voices. Defaults to standard',
+            description:
+              'Audio generation method. "standard" uses Google TTS, "Chirp_gemini" uses advanced Chirp voices. Defaults to standard',
             default: 'standard',
           },
         },
         required: ['text'],
       },
     );
-    
+
     // Get backend configuration from environment or config
     this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendApiKey = process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
-    
+    this.backendApiKey =
+      process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
+
     if (!this.backendUrl || !this.backendApiKey) {
-      console.warn('[AudioGeneratorTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.');
+      console.warn(
+        '[AudioGeneratorTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.',
+      );
     }
   }
 
@@ -146,8 +179,11 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
 
   getDescription(params: AudioGeneratorParams): string {
     const method = params.method || 'standard';
-    const text = params.text.length > 50 ? `${params.text.substring(0, 50)}...` : params.text;
-    
+    const text =
+      params.text.length > 50
+        ? `${params.text.substring(0, 50)}...`
+        : params.text;
+
     if (method === 'Chirp_gemini') {
       const voiceName = params.voice_name || 'Aoede';
       return `Generating audio using Chirp_gemini: "${text}" (voice: ${voiceName})`;
@@ -158,7 +194,10 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
     }
   }
 
-  async execute(params: AudioGeneratorParams, signal: AbortSignal): Promise<ToolResult> {
+  async execute(
+    params: AudioGeneratorParams,
+    signal: AbortSignal,
+  ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
     if (validationError) {
       return {
@@ -167,12 +206,12 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
       };
     }
 
-    const { 
-      text, 
-      language_code = 'en-IN', 
+    const {
+      text,
+      language_code = 'en-IN',
       voice_name = 'en-IN-Chirp-HD-D',
       conversation_id,
-      method = 'standard'
+      method = 'standard',
     } = params;
 
     try {
@@ -181,8 +220,10 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
         throw new Error('Audio generation was cancelled');
       }
 
-      console.log(`[AudioGeneratorTool] Starting audio generation for text: "${text.substring(0, 50)}..."`);
-      
+      console.log(
+        `[AudioGeneratorTool] Starting audio generation for text: "${text.substring(0, 50)}..."`,
+      );
+
       const response = await fetch(`${this.backendUrl}/generate_audio`, {
         method: 'POST',
         headers: {
@@ -201,14 +242,16 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to generate audio: ${response.status} ${errorText}`);
+        throw new Error(
+          `Failed to generate audio: ${response.status} ${errorText}`,
+        );
       }
 
       const result = await response.json();
-      
+
       if (result.status === 'success') {
         const successMessage = `Successfully generated audio using ${method === 'Chirp_gemini' ? 'Chirp Gemini' : 'Google TTS'}`;
-        
+
         return {
           llmContent: JSON.stringify({
             success: true,
@@ -223,14 +266,18 @@ export class AudioGeneratorTool extends BaseTool<AudioGeneratorParams, ToolResul
           returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n${method === 'Chirp_gemini' ? `🎭 Voice: ${voice_name}` : `🌍 Language: ${language_code}\n🎭 Voice: ${voice_name}`}\n🔗 Audio File: ${result.gcs_file_path}${result.conversation_id ? `\n💾 Conversation ID: ${result.conversation_id}` : ''}`,
         };
       } else {
-        const errorMessage = result.error || 'Audio generation failed with unknown error';
+        const errorMessage =
+          result.error || 'Audio generation failed with unknown error';
         throw new Error(errorMessage);
       }
-      
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[AudioGeneratorTool] Error generating audio:`, errorMessage);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        `[AudioGeneratorTool] Error generating audio:`,
+        errorMessage,
+      );
+
       return {
         llmContent: JSON.stringify({
           success: false,

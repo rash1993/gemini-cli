@@ -59,6 +59,7 @@ export * from './tools/audio-generator.js';
 export * from './tools/transcription.js';
 export * from './tools/mcp-client.js';
 export * from './tools/mcp-tool.js';
+export * from './tools/initiate-slides.js';
 
 // Export telemetry functions
 export * from './telemetry/index.js';
