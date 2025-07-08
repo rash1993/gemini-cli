@@ -53,8 +53,13 @@ export * from './tools/memoryTool.js';
 export * from './tools/shell.js';
 export * from './tools/web-search.js';
 export * from './tools/read-many-files.js';
+export * from './tools/calculator.js';
+export * from './tools/image-generator.js';
+export * from './tools/audio-generator.js';
+export * from './tools/transcription.js';
 export * from './tools/mcp-client.js';
 export * from './tools/mcp-tool.js';
+export * from './tools/initiate-slides.js';
 
 // Export telemetry functions
 export * from './telemetry/index.js';

@@ -16,11 +16,12 @@ export interface GitIgnoreFilter {
 
 export class GitIgnoreParser implements GitIgnoreFilter {
   private projectRoot: string;
-  private ig: Ignore = ignore();
+  private ig: Ignore;
   private patterns: string[] = [];
 
   constructor(projectRoot: string) {
     this.projectRoot = path.resolve(projectRoot);
+    this.ig = (ignore as unknown as () => Ignore)();
   }
 
   loadGitRepoPatterns(): void {
