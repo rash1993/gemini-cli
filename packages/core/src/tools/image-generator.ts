@@ -199,7 +199,7 @@ export class ImageGeneratorTool extends BaseTool<
             image_urls: result.images,
             message: successMessage,
           }),
-          returnDisplay: `✅ ${successMessage}\n\n🎨 Prompt: ${prompt}\n📐 Aspect Ratio: ${aspect_ratio}${negative_prompt ? `\n🚫 Negative Prompt: ${negative_prompt}` : ''}\n\n🔗 Generated Images:\n${result.images.map((url, i) => `${i + 1}. ${url}`).join('\n')}\n\n💾 Session ID: ${sessionId}`,
+          returnDisplay: `✅ ${successMessage}\n\n🎨 Prompt: ${prompt}\n📐 Aspect Ratio: ${aspect_ratio}${negative_prompt ? `\n🚫 Negative Prompt: ${negative_prompt}` : ''}\n\n🖼️ Generated Images:\n${result.images.map((url, i) => `![Generated Image ${i + 1}](${url})`).join('\n\n')}\n\n🔗 Download Links:\n${result.images.map((url, i) => `${i + 1}. [Image ${i + 1}](${url})`).join('\n')}\n\n💾 Session ID: ${sessionId}`,
         };
       } else {
         const errorMessage =
