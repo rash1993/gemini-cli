@@ -72,6 +72,7 @@ import ansiEscapes from 'ansi-escapes';
 import { OverflowProvider } from './contexts/OverflowContext.js';
 import { ShowMoreLines } from './components/ShowMoreLines.js';
 import { PrivacyNotice } from './privacy/PrivacyNotice.js';
+import { useStreamingLayout } from './hooks/useStreamingLayout.js';
 
 const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
 
@@ -495,10 +496,21 @@ const App = ({ config, settings, startupWarnings = [] }: AppProps) => {
   }, [terminalHeight, consoleMessages, showErrorDetails]);
 
   const staticExtraHeight = /* margins and padding */ 3;
-  const availableTerminalHeight = useMemo(
+  const baseAvailableTerminalHeight = useMemo(
     () => terminalHeight - footerHeight - staticExtraHeight,
     [terminalHeight, footerHeight],
   );
+
+  const { effectiveAvailableHeight, isStreamingActive } = useStreamingLayout({
+    streamingState,
+    availableTerminalHeight: baseAvailableTerminalHeight,
+    terminalWidth,
+  });
+
+  // Use effective height for streaming content, base height for static content
+  const availableTerminalHeight = isStreamingActive 
+    ? effectiveAvailableHeight 
+    : baseAvailableTerminalHeight;
 
   useEffect(() => {
     // skip refreshing Static during first mount

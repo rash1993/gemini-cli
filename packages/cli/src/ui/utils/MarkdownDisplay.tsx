@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useContext } from 'react';
 import { Text, Box } from 'ink';
 import { Colors } from '../colors.js';
 import { colorizeCode } from './CodeColorizer.js';
+import { StreamingContext } from '../contexts/StreamingContext.js';
+import { StreamingState } from '../types.js';
+import { useSmoothScroll } from '../hooks/useSmoothScroll.js';
 
 interface MarkdownDisplayProps {
   text: string;
@@ -36,6 +39,13 @@ const MarkdownDisplayInternal: React.FC<MarkdownDisplayProps> = ({
   terminalWidth,
 }) => {
   if (!text) return <></>;
+
+  const streamingState = useContext(StreamingContext) ?? StreamingState.Idle;
+  const { shouldShowTruncation, getDisplayLines } = useSmoothScroll({
+    streamingState,
+    availableTerminalHeight,
+    constrainHeight: availableTerminalHeight !== undefined,
+  });
 
   const lines = text.split('\n');
   const headerRegex = /^ *(#{1,4}) +(.*)/;
@@ -192,6 +202,24 @@ const MarkdownDisplayInternal: React.FC<MarkdownDisplayProps> = ({
         terminalWidth={terminalWidth}
       />,
     );
+  }
+
+  // Apply smooth scrolling logic to the entire content when streaming
+  if (isPending && availableTerminalHeight !== undefined) {
+    const totalContentHeight = contentBlocks.length;
+    const displayHeight = getDisplayLines(totalContentHeight);
+    
+    if (shouldShowTruncation(totalContentHeight) && displayHeight < totalContentHeight) {
+      const truncatedBlocks = contentBlocks.slice(0, displayHeight);
+      return (
+        <>
+          {truncatedBlocks}
+          <Box>
+            <Text color={Colors.Gray}>... generating more content ...</Text>
+          </Box>
+        </>
+      );
+    }
   }
 
   return <>{contentBlocks}</>;
@@ -351,38 +379,30 @@ const RenderCodeBlockInternal: React.FC<RenderCodeBlockProps> = ({
   availableTerminalHeight,
   terminalWidth,
 }) => {
-  const MIN_LINES_FOR_MESSAGE = 1; // Minimum lines to show before the "generating more" message
-  const RESERVED_LINES = 2; // Lines reserved for the message itself and potential padding
+  const streamingState = useContext(StreamingContext) ?? StreamingState.Idle;
+  const { shouldShowTruncation, getDisplayLines } = useSmoothScroll({
+    streamingState,
+    availableTerminalHeight,
+    constrainHeight: availableTerminalHeight !== undefined,
+  });
 
-  if (isPending && availableTerminalHeight !== undefined) {
-    const MAX_CODE_LINES_WHEN_PENDING = Math.max(
-      0,
-      availableTerminalHeight - CODE_BLOCK_PADDING * 2 - RESERVED_LINES,
+  const displayLines = getDisplayLines(content.length);
+  const showTruncation = shouldShowTruncation(content.length);
+
+  if (isPending && showTruncation && displayLines < content.length) {
+    const truncatedContent = content.slice(0, displayLines);
+    const colorizedTruncatedCode = colorizeCode(
+      truncatedContent.join('\n'),
+      lang,
+      availableTerminalHeight,
+      terminalWidth - CODE_BLOCK_PADDING * 2,
     );
-
-    if (content.length > MAX_CODE_LINES_WHEN_PENDING) {
-      if (MAX_CODE_LINES_WHEN_PENDING < MIN_LINES_FOR_MESSAGE) {
-        // Not enough space to even show the message meaningfully
-        return (
-          <Box padding={CODE_BLOCK_PADDING}>
-            <Text color={Colors.Gray}>... code is being written ...</Text>
-          </Box>
-        );
-      }
-      const truncatedContent = content.slice(0, MAX_CODE_LINES_WHEN_PENDING);
-      const colorizedTruncatedCode = colorizeCode(
-        truncatedContent.join('\n'),
-        lang,
-        availableTerminalHeight,
-        terminalWidth - CODE_BLOCK_PADDING * 2,
-      );
-      return (
-        <Box flexDirection="column" padding={CODE_BLOCK_PADDING}>
-          {colorizedTruncatedCode}
-          <Text color={Colors.Gray}>... generating more ...</Text>
-        </Box>
-      );
-    }
+    return (
+      <Box flexDirection="column" padding={CODE_BLOCK_PADDING}>
+        {colorizedTruncatedCode}
+        <Text color={Colors.Gray}>... generating more ...</Text>
+      </Box>
+    );
   }
 
   const fullContent = content.join('\n');

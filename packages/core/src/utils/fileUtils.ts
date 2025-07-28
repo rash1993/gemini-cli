@@ -254,13 +254,25 @@ export async function processSingleFileContent(
       }
       case 'image':
       case 'pdf': {
+        const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+        
+        // Check if MIME type is supported by Gemini API
+        // Gemini doesn't support SVG files
+        if (mimeType === 'image/svg+xml') {
+          return {
+            llmContent: `Cannot process SVG file: ${relativePathForDisplay} (SVG format not supported by Gemini API)`,
+            returnDisplay: `Skipped SVG file: ${relativePathForDisplay} (not supported by Gemini API)`,
+            error: `SVG files are not supported by Gemini API: ${filePath}`,
+          };
+        }
+        
         const contentBuffer = await fs.promises.readFile(filePath);
         const base64Data = contentBuffer.toString('base64');
         return {
           llmContent: {
             inlineData: {
               data: base64Data,
-              mimeType: mime.lookup(filePath) || 'application/octet-stream',
+              mimeType,
             },
           },
           returnDisplay: `Read ${fileType} file: ${relativePathForDisplay}`,
