@@ -263,7 +263,7 @@ export class AudioGeneratorTool extends BaseTool<
             gcs_file_path: result.gcs_file_path,
             message: successMessage,
           }),
-          returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n${method === 'Chirp_gemini' ? `🎭 Voice: ${voice_name}` : `🌍 Language: ${language_code}\n🎭 Voice: ${voice_name}`}\n🔗 Audio File: ${result.gcs_file_path}${result.conversation_id ? `\n💾 Conversation ID: ${result.conversation_id}` : ''}`,
+          returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n${method === 'Chirp_gemini' ? `🎭 Voice: ${voice_name}` : `🌍 Language: ${language_code}\n🎭 Voice: ${voice_name}`}\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.gcs_file_path}" type="audio/mpeg">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.gcs_file_path})${result.conversation_id ? `\n💾 Conversation ID: ${result.conversation_id}` : ''}`,
         };
       } else {
         const errorMessage =
