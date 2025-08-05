@@ -7,60 +7,70 @@
 import { BaseTool, ToolResult } from './tools.js';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { Config } from '../config/config.js';
+import voicesData from '../data/voices.json' with { type: 'json' };
 
 /**
  * Parameters for the AudioGeneratorTool.
  */
 export interface AudioGeneratorParams {
   text: string;
-  language_code?: string;
-  voice_name?: string;
+  voice_id: string;
+  language?: string;
+  instructions?: string;
   conversation_id?: string;
-  method?: 'standard' | 'Chirp_gemini';
 }
 
 /**
- * Valid voices for standard TTS method by language code
+ * Valid voice IDs from the unified audio API (loaded from JSON)
  */
-const VALID_VOICES: Record<string, string[]> = {
-  'en-US': [
-    'en-US-Journey-D',
-    'en-US-Journey-F',
-    'en-US-Journey-O',
-    'en-US-Neural2-A',
-    'en-US-Neural2-C',
-  ],
-  'en-IN': [
-    'en-IN-Chirp-HD-D',
-    'en-IN-Neural2-A',
-    'en-IN-Neural2-B',
-    'en-IN-Neural2-C',
-  ],
-  'en-GB': [
-    'en-GB-Journey-D',
-    'en-GB-Journey-F',
-    'en-GB-Neural2-A',
-    'en-GB-Neural2-B',
-  ],
-  'es-ES': ['es-ES-Journey-D', 'es-ES-Journey-F', 'es-ES-Neural2-A'],
-  'fr-FR': ['fr-FR-Journey-D', 'fr-FR-Journey-F', 'fr-FR-Neural2-A'],
-  'de-DE': ['de-DE-Journey-D', 'de-DE-Journey-F', 'de-DE-Neural2-A'],
-  'ja-JP': ['ja-JP-Neural2-B', 'ja-JP-Neural2-C', 'ja-JP-Neural2-D'],
-  'ko-KR': ['ko-KR-Neural2-A', 'ko-KR-Neural2-B', 'ko-KR-Neural2-C'],
-};
+const VALID_VOICE_IDS = voicesData.voices.map((voice: any) => voice.id);
 
 /**
- * Valid Chirp Gemini voices
+ * Supported languages (loaded from JSON)
  */
-const CHIRP_GEMINI_VOICES = [
-  'Aoede',
-  'Ariel',
-  'Charon',
-  'Fenrir',
-  'Kore',
-  'Puck',
-  'Titan',
-];
+const SUPPORTED_LANGUAGES = voicesData.summary.languages_supported;
+
+/**
+ * Map short language codes to full language codes
+ */
+function mapLanguageCode(language: string): string {
+  // Map common short codes to full codes
+  const languageMap: Record<string, string> = {
+    'en': 'en-US',
+    'es': 'es-US', 
+    'fr': 'fr-FR',
+    'de': 'de-DE',
+    'it': 'it-IT',
+    'pt': 'pt-BR',
+    'ja': 'ja-JP',
+    'ko': 'ko-KR',
+    'hi': 'hi-IN',
+    'ar': 'ar-EG',
+    'ru': 'ru-RU',
+    'th': 'th-TH',
+    'vi': 'vi-VN',
+    'tr': 'tr-TR',
+    'nl': 'nl-NL',
+    'pl': 'pl-PL',
+    'cs': 'cs-CZ',
+    'el': 'el-GR',
+    'ro': 'ro-RO',
+    'uk': 'uk-UA',
+    'id': 'id-ID',
+    'bn': 'bn-BD',
+    'mr': 'mr-IN',
+    'ta': 'ta-IN',
+    'te': 'te-IN'
+  };
+  
+  // If it's already a full code, return as is
+  if (language.includes('-')) {
+    return language;
+  }
+  
+  // Map short code to full code, default to en-US
+  return languageMap[language] || 'en-US';
+}
 
 /**
  * Audio Generator tool that creates audio from text using a FastAPI backend service.
@@ -78,7 +88,7 @@ export class AudioGeneratorTool extends BaseTool<
     super(
       AudioGeneratorTool.Name,
       'Audio Generator',
-      'Generates audio from text using Google Text-to-Speech or Chirp Gemini. Provide text to convert to speech. Optionally specify language code, voice name, conversation ID, and method (standard or Chirp_gemini).',
+'Generates audio from text using the unified audio service with ElevenLabs and Google Gemini providers. Provide text and voice_id to convert to speech.',
       {
         type: 'object',
         properties: {
@@ -87,32 +97,29 @@ export class AudioGeneratorTool extends BaseTool<
             description:
               'The text to convert to speech. Maximum 6000 characters.',
           },
-          language_code: {
+          voice_id: {
             type: 'string',
             description:
-              'Language code for standard TTS (e.g., en-US, en-IN, es-ES). Defaults to en-IN',
-            default: 'en-IN',
+              'Voice ID from the unified audio service (e.g., 9BWtsMINqrJLrRacOk9x for ElevenLabs, gemini_zephyr for Gemini)',
           },
-          voice_name: {
+          language: {
             type: 'string',
             description:
-              'Voice name. For standard method: depends on language_code. For Chirp_gemini: Aoede, Ariel, Charon, Fenrir, Kore, Puck, or Titan. Defaults to en-IN-Chirp-HD-D',
-            default: 'en-IN-Chirp-HD-D',
+              'Language code (e.g., en-US, es-US, de-DE, hi-IN). Short codes like "en" are automatically mapped to "en-US". Defaults to en-US',
+            default: 'en-US',
+          },
+          instructions: {
+            type: 'string',
+            description:
+              'Optional instructions for voice tone and style (only supported by Gemini voices with IDs starting with "gemini_")',
           },
           conversation_id: {
             type: 'string',
             description:
               'Optional conversation ID to associate with the audio generation',
           },
-          method: {
-            type: 'string',
-            enum: ['standard', 'Chirp_gemini'],
-            description:
-              'Audio generation method. "standard" uses Google TTS, "Chirp_gemini" uses advanced Chirp voices. Defaults to standard',
-            default: 'standard',
-          },
         },
-        required: ['text'],
+        required: ['text', 'voice_id'],
       },
     );
 
@@ -140,7 +147,7 @@ export class AudioGeneratorTool extends BaseTool<
         params,
       )
     ) {
-      return 'Parameters failed schema validation. Ensure text is a non-empty string.';
+      return 'Parameters failed schema validation. Ensure text and voice_id are provided.';
     }
 
     if (!params.text || params.text.trim() === '') {
@@ -151,47 +158,44 @@ export class AudioGeneratorTool extends BaseTool<
       return 'The text is too long. Please keep it under 6000 characters.';
     }
 
-    const method = params.method || 'standard';
-    if (!['standard', 'Chirp_gemini'].includes(method)) {
-      return 'Invalid method. Must be either "standard" or "Chirp_gemini".';
+    if (!params.voice_id) {
+      return 'The voice_id parameter is required.';
     }
 
-    if (method === 'Chirp_gemini') {
-      const voiceName = params.voice_name || 'Aoede';
-      if (!CHIRP_GEMINI_VOICES.includes(voiceName)) {
-        return `Invalid Chirp_gemini voice "${voiceName}". Must be one of: ${CHIRP_GEMINI_VOICES.join(', ')}`;
-      }
-    } else {
-      // Standard method validation
-      const languageCode = params.language_code || 'en-IN';
-      if (!(languageCode in VALID_VOICES)) {
-        return `Invalid language code "${languageCode}". Must be one of: ${Object.keys(VALID_VOICES).join(', ')}`;
-      }
+    if (!VALID_VOICE_IDS.includes(params.voice_id)) {
+      return `Invalid voice_id "${params.voice_id}". Must be a valid voice ID from the unified audio service.`;
+    }
 
-      const voiceName = params.voice_name || 'en-IN-Chirp-HD-D';
-      if (!VALID_VOICES[languageCode].includes(voiceName)) {
-        return `Invalid voice name "${voiceName}" for language ${languageCode}. Must be one of: ${VALID_VOICES[languageCode].join(', ')}`;
-      }
+    // Map language code and validate
+    const mappedLanguage = mapLanguageCode(params.language || 'en');
+    if (!SUPPORTED_LANGUAGES.includes(mappedLanguage)) {
+      return `Invalid language "${params.language}" (mapped to "${mappedLanguage}"). Must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`;
+    }
+
+    // Instructions are only supported for Gemini voices
+    if (params.instructions && !params.voice_id.startsWith('gemini_')) {
+      return 'Instructions parameter is only supported for Google Gemini voices (voice_id starting with "gemini_")';
     }
 
     return null;
   }
 
   getDescription(params: AudioGeneratorParams): string {
-    const method = params.method || 'standard';
     const text =
       params.text.length > 50
         ? `${params.text.substring(0, 50)}...`
         : params.text;
 
-    if (method === 'Chirp_gemini') {
-      const voiceName = params.voice_name || 'Aoede';
-      return `Generating audio using Chirp_gemini: "${text}" (voice: ${voiceName})`;
-    } else {
-      const languageCode = params.language_code || 'en-IN';
-      const voiceName = params.voice_name || 'en-IN-Chirp-HD-D';
-      return `Generating audio using standard TTS: "${text}" (${languageCode}, ${voiceName})`;
+    const provider = params.voice_id.startsWith('gemini_') ? 'Google Gemini' : 'ElevenLabs';
+    const language = mapLanguageCode(params.language || 'en');
+    
+    let description = `Generating audio using ${provider}: "${text}" (voice: ${params.voice_id}, language: ${language})`;
+    
+    if (params.instructions) {
+      description += ` with instructions: "${params.instructions}"`;
     }
+    
+    return description;
   }
 
   async execute(
@@ -208,11 +212,14 @@ export class AudioGeneratorTool extends BaseTool<
 
     const {
       text,
-      language_code = 'en-IN',
-      voice_name = 'en-IN-Chirp-HD-D',
+      voice_id,
+      language = 'en-US',
+      instructions,
       conversation_id,
-      method = 'standard',
     } = params;
+    
+    // Map language code to full format
+    const mappedLanguage = mapLanguageCode(language);
 
     try {
       // Check if operation was cancelled
@@ -221,10 +228,11 @@ export class AudioGeneratorTool extends BaseTool<
       }
 
       console.log(
-        `[AudioGeneratorTool] Starting audio generation for text: "${text.substring(0, 50)}..."`,
+        `[AudioGeneratorTool] Starting audio generation for text: "${text.substring(0, 50)}..." with voice: ${voice_id}`,
       );
 
-      const response = await fetch(`${this.backendUrl}/generate_audio`, {
+      // Call the unified endpoint directly (no polling needed)
+      const response = await fetch(`${this.backendUrl}/generate_audio/unified`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -232,10 +240,10 @@ export class AudioGeneratorTool extends BaseTool<
         },
         body: JSON.stringify({
           text,
-          language_code,
-          voice_name,
+          voice_id,
+          language: mappedLanguage,
+          instructions,
           conversation_id,
-          method,
         }),
         signal,
       });
@@ -248,28 +256,31 @@ export class AudioGeneratorTool extends BaseTool<
       }
 
       const result = await response.json();
-
-      if (result.status === 'success') {
-        const successMessage = `Successfully generated audio using ${method === 'Chirp_gemini' ? 'Chirp Gemini' : 'Google TTS'}`;
-
-        return {
-          llmContent: JSON.stringify({
-            success: true,
-            text,
-            language_code,
-            voice_name,
-            conversation_id: result.conversation_id,
-            method,
-            gcs_file_path: result.gcs_file_path,
-            message: successMessage,
-          }),
-          returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n${method === 'Chirp_gemini' ? `🎭 Voice: ${voice_name}` : `🌍 Language: ${language_code}\n🎭 Voice: ${voice_name}`}\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.gcs_file_path}" type="audio/mpeg">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.gcs_file_path})${result.conversation_id ? `\n💾 Conversation ID: ${result.conversation_id}` : ''}`,
-        };
-      } else {
-        const errorMessage =
-          result.error || 'Audio generation failed with unknown error';
-        throw new Error(errorMessage);
+      
+      if (result.status !== 'success') {
+        throw new Error(result.detail || 'Audio generation failed');
       }
+
+      const provider = voice_id.startsWith('gemini_') ? 'Google Gemini' : 'ElevenLabs';
+      const successMessage = `Successfully generated audio using ${provider}`;
+
+      return {
+        llmContent: JSON.stringify({
+          success: true,
+          text,
+          voice_id,
+          language: mappedLanguage,
+          instructions,
+          conversation_id: result.conversation_id,
+          audio_url: result.gcs_file_path,
+          duration_seconds: result.duration_seconds,
+          provider: result.provider,
+          voice_name: result.voice_name,
+          message: successMessage,
+        }),
+        returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n🎭 Voice: ${result.voice_name} (${voice_id})\n🌍 Language: ${mappedLanguage}${instructions ? `\n📝 Instructions: ${instructions}` : ''}\n⏱️ Duration: ${result.duration_seconds?.toFixed(1)}s\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.gcs_file_path}" type="audio/mpeg">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.gcs_file_path})${result.conversation_id ? `\n💾 Conversation ID: ${result.conversation_id}` : ''}`,
+      };
+
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
