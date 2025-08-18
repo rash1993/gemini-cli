@@ -44,7 +44,11 @@ export class AudioGeneratorTool extends BaseTool<
     super(
       AudioGeneratorTool.Name,
       'Audio Generator',
-      'Generates audio from text using Gemini Chirp voices. Provide text and voice ID to convert to speech.',
+      'Generates high-quality audio from text using Gemini Chirp TTS with 30 professional voices ' +
+      'supporting 20 languages. Features include: 6 English-only voices optimized for specific use cases ' +
+      '(narration, marketing, meditation, podcasts, business, kids content) and 24 multilingual voices ' +
+      'covering European, Asian, Middle Eastern, and Romance languages. Perfect for audiobooks, podcasts, ' +
+      'presentations, educational content, and international applications.',
       {
         type: 'object',
         properties: {
@@ -56,12 +60,28 @@ export class AudioGeneratorTool extends BaseTool<
           voice: {
             type: 'string',
             description:
-              'Voice ID from the Gemini Chirp service (e.g., zephyr, aoede, achernar)',
+              'Voice ID from Gemini Chirp (30 voices available). ' +
+              'ENGLISH-ONLY (6): zephyr (male, smooth narration), aoede (female, expressive marketing), ' +
+              'charon (male, calm meditation), fenrir (male, warm podcasts), kore (female, professional business), ' +
+              'puck (male, energetic kids content). ' +
+              'MULTILINGUAL (24): achernar (male, en/de/es/fr/it/pt), achird (female, en/de/es/fr/it/pt), ' +
+              'algenib (male, en/es/fr/it/pt), algieba (female, en/de/es/fr/it), alnilam (male, en/es/fr/hi/ja), ' +
+              'autonoe (female, en/de/es/fr), callirrhoe (female, en/es/fr/it), despina (female, en/es/fr/pt), ' +
+              'enceladus (male, en/de/es/fr), erinome (female, en/es/fr/it), gacrux (male, en/de/es/fr), ' +
+              'iapetus (male, en/es/fr/it), laomedeia (female, en/de/es/fr), leda (female, en/es/fr/it), ' +
+              'orus (male, en/de/es/fr), pulcherrima (female, en/es/fr/it/pt), rasalgethi (male, en/ar/hi/ur), ' +
+              'sadachbia (female, en/ar/fa/ur), sadaltager (male, en/de/nl/sv), schedar (female, en/ru/pl/uk), ' +
+              'sulafat (female, en/es/pt/ca), umbriel (male, en/fr/it/ro), vindemiatrix (female, en/de/fr/it), ' +
+              'zubenelgenubi (male, en/ja/ko/cmn)',
           },
           language: {
             type: 'string',
             description:
-              'Language code (e.g., en, es, fr, de). Defaults to en',
+              'Language code for speech synthesis. Supported: en (English), es (Spanish), fr (French), ' +
+              'de (German), it (Italian), pt (Portuguese), ja (Japanese), ko (Korean), cmn (Mandarin), ' +
+              'ar (Arabic), hi (Hindi), ur (Urdu), fa (Farsi), ru (Russian), pl (Polish), uk (Ukrainian), ' +
+              'nl (Dutch), sv (Swedish), ca (Catalan), ro (Romanian). Defaults to en. ' +
+              'Note: Voice must support the selected language.',
             default: 'en',
           },
         },
