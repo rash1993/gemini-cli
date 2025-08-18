@@ -14,10 +14,8 @@ import voicesData from '../data/voices.json' with { type: 'json' };
  */
 export interface AudioGeneratorParams {
   text: string;
-  voice_id: string;
+  voice: string;
   language?: string;
-  instructions?: string;
-  conversation_id?: string;
 }
 
 /**
@@ -31,64 +29,22 @@ const VALID_VOICE_IDS = voicesData.voices.map((voice: any) => voice.id);
 const SUPPORTED_LANGUAGES = voicesData.summary.languages_supported;
 
 /**
- * Map short language codes to full language codes
- */
-function mapLanguageCode(language: string): string {
-  // Map common short codes to full codes
-  const languageMap: Record<string, string> = {
-    'en': 'en-US',
-    'es': 'es-US', 
-    'fr': 'fr-FR',
-    'de': 'de-DE',
-    'it': 'it-IT',
-    'pt': 'pt-BR',
-    'ja': 'ja-JP',
-    'ko': 'ko-KR',
-    'hi': 'hi-IN',
-    'ar': 'ar-EG',
-    'ru': 'ru-RU',
-    'th': 'th-TH',
-    'vi': 'vi-VN',
-    'tr': 'tr-TR',
-    'nl': 'nl-NL',
-    'pl': 'pl-PL',
-    'cs': 'cs-CZ',
-    'el': 'el-GR',
-    'ro': 'ro-RO',
-    'uk': 'uk-UA',
-    'id': 'id-ID',
-    'bn': 'bn-BD',
-    'mr': 'mr-IN',
-    'ta': 'ta-IN',
-    'te': 'te-IN'
-  };
-  
-  // If it's already a full code, return as is
-  if (language.includes('-')) {
-    return language;
-  }
-  
-  // Map short code to full code, default to en-US
-  return languageMap[language] || 'en-US';
-}
-
-/**
- * Audio Generator tool that creates audio from text using a FastAPI backend service.
- * Supports both standard Google TTS and Chirp Gemini voices.
+ * Audio Generator tool that creates audio from text using the unified AI service.
+ * Uses Gemini Chirp for high-quality text-to-speech synthesis.
  */
 export class AudioGeneratorTool extends BaseTool<
   AudioGeneratorParams,
   ToolResult
 > {
   static readonly Name: string = 'generate_audio';
-  private backendUrl: string;
-  private backendApiKey: string;
+  private apiUrl: string = 'http://35.238.235.218';
+  private apiKey: string = 'videoagent@backend1qaz0okm';
 
   constructor(private readonly config?: Config) {
     super(
       AudioGeneratorTool.Name,
       'Audio Generator',
-'Generates audio from text using the unified audio service with ElevenLabs and Google Gemini providers. Provide text and voice_id to convert to speech.',
+      'Generates audio from text using Gemini Chirp voices. Provide text and voice ID to convert to speech.',
       {
         type: 'object',
         properties: {
@@ -97,47 +53,30 @@ export class AudioGeneratorTool extends BaseTool<
             description:
               'The text to convert to speech. Maximum 6000 characters.',
           },
-          voice_id: {
+          voice: {
             type: 'string',
             description:
-              'Voice ID from the unified audio service (e.g., 9BWtsMINqrJLrRacOk9x for ElevenLabs, gemini_zephyr for Gemini)',
+              'Voice ID from the Gemini Chirp service (e.g., zephyr, aoede, achernar)',
           },
           language: {
             type: 'string',
             description:
-              'Language code (e.g., en-US, es-US, de-DE, hi-IN). Short codes like "en" are automatically mapped to "en-US". Defaults to en-US',
-            default: 'en-US',
-          },
-          instructions: {
-            type: 'string',
-            description:
-              'Optional instructions for voice tone and style (only supported by Gemini voices with IDs starting with "gemini_")',
-          },
-          conversation_id: {
-            type: 'string',
-            description:
-              'Optional conversation ID to associate with the audio generation',
+              'Language code (e.g., en, es, fr, de). Defaults to en',
+            default: 'en',
           },
         },
-        required: ['text', 'voice_id'],
+        required: ['text', 'voice'],
       },
     );
 
-    // Get backend configuration from environment or config
-    this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendApiKey =
-      process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
-
-    if (!this.backendUrl || !this.backendApiKey) {
-      console.warn(
-        '[AudioGeneratorTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.',
-      );
-    }
+    // Allow override from environment if needed
+    this.apiUrl = process.env.UNIFIED_AI_URL || this.apiUrl;
+    this.apiKey = process.env.UNIFIED_AI_KEY || this.apiKey;
   }
 
   validateToolParams(params: AudioGeneratorParams): string | null {
-    if (!this.backendUrl || !this.backendApiKey) {
-      return 'Backend URL or API key not configured. Please set BACKEND_URL and BACKEND_API_KEY environment variables.';
+    if (!this.apiUrl || !this.apiKey) {
+      return 'API URL or key not configured.';
     }
 
     if (
@@ -147,7 +86,7 @@ export class AudioGeneratorTool extends BaseTool<
         params,
       )
     ) {
-      return 'Parameters failed schema validation. Ensure text and voice_id are provided.';
+      return 'Parameters failed schema validation. Ensure text and voice are provided.';
     }
 
     if (!params.text || params.text.trim() === '') {
@@ -158,23 +97,24 @@ export class AudioGeneratorTool extends BaseTool<
       return 'The text is too long. Please keep it under 6000 characters.';
     }
 
-    if (!params.voice_id) {
-      return 'The voice_id parameter is required.';
+    if (!params.voice) {
+      return 'The voice parameter is required.';
     }
 
-    if (!VALID_VOICE_IDS.includes(params.voice_id)) {
-      return `Invalid voice_id "${params.voice_id}". Must be a valid voice ID from the unified audio service.`;
+    if (!VALID_VOICE_IDS.includes(params.voice)) {
+      return `Invalid voice "${params.voice}". Must be a valid voice ID from the Gemini Chirp service. Examples: zephyr, aoede, achernar`;
     }
 
-    // Map language code and validate
-    const mappedLanguage = mapLanguageCode(params.language || 'en');
-    if (!SUPPORTED_LANGUAGES.includes(mappedLanguage)) {
-      return `Invalid language "${params.language}" (mapped to "${mappedLanguage}"). Must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`;
+    // Validate language
+    const language = params.language || 'en';
+    if (!SUPPORTED_LANGUAGES.includes(language)) {
+      return `Invalid language "${language}". Must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`;
     }
 
-    // Instructions are only supported for Gemini voices
-    if (params.instructions && !params.voice_id.startsWith('gemini_')) {
-      return 'Instructions parameter is only supported for Google Gemini voices (voice_id starting with "gemini_")';
+    // Check if voice supports the requested language
+    const voice = voicesData.voices.find((v: any) => v.id === params.voice);
+    if (voice && !voice.languages.includes(language)) {
+      return `Voice "${params.voice}" does not support language "${language}". Supported languages for this voice: ${voice.languages.join(', ')}`;
     }
 
     return null;
@@ -186,16 +126,11 @@ export class AudioGeneratorTool extends BaseTool<
         ? `${params.text.substring(0, 50)}...`
         : params.text;
 
-    const provider = params.voice_id.startsWith('gemini_') ? 'Google Gemini' : 'ElevenLabs';
-    const language = mapLanguageCode(params.language || 'en');
+    const voice = voicesData.voices.find((v: any) => v.id === params.voice);
+    const voiceName = voice ? voice.name : params.voice;
+    const language = params.language || 'en';
     
-    let description = `Generating audio using ${provider}: "${text}" (voice: ${params.voice_id}, language: ${language})`;
-    
-    if (params.instructions) {
-      description += ` with instructions: "${params.instructions}"`;
-    }
-    
-    return description;
+    return `Generating audio using Gemini Chirp: "${text}" (voice: ${voiceName}, language: ${language})`;
   }
 
   async execute(
@@ -212,14 +147,9 @@ export class AudioGeneratorTool extends BaseTool<
 
     const {
       text,
-      voice_id,
-      language = 'en-US',
-      instructions,
-      conversation_id,
+      voice,
+      language = 'en',
     } = params;
-    
-    // Map language code to full format
-    const mappedLanguage = mapLanguageCode(language);
 
     try {
       // Check if operation was cancelled
@@ -228,58 +158,44 @@ export class AudioGeneratorTool extends BaseTool<
       }
 
       console.log(
-        `[AudioGeneratorTool] Starting audio generation for text: "${text.substring(0, 50)}..." with voice: ${voice_id}`,
+        `[AudioGeneratorTool] Starting audio generation for text: "${text.substring(0, 50)}..." with voice: ${voice}`,
       );
 
-      // Call the unified endpoint directly (no polling needed)
-      const response = await fetch(`${this.backendUrl}/generate_audio/unified`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'BACKEND-API-KEY': this.backendApiKey,
-        },
-        body: JSON.stringify({
-          text,
-          voice_id,
-          language: mappedLanguage,
-          instructions,
-          conversation_id,
-        }),
-        signal,
+      // Step 1: Initiate audio generation
+      const taskId = await this.initiateAudioGeneration({
+        text,
+        voice,
+        language,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Failed to generate audio: ${response.status} ${errorText}`,
-        );
+      console.log(`[AudioGeneratorTool] Audio generation task created: ${taskId}`);
+
+      // Step 2: Poll for completion
+      const result = await this.pollForCompletion(taskId, signal);
+
+      if (result.success && result.audio_url) {
+        const voiceInfo = voicesData.voices.find((v: any) => v.id === voice);
+        const voiceName = voiceInfo ? voiceInfo.name : voice;
+        const successMessage = `Successfully generated audio using Gemini Chirp`;
+
+        return {
+          llmContent: JSON.stringify({
+            success: true,
+            task_id: taskId,
+            text,
+            voice,
+            voice_name: voiceName,
+            language,
+            audio_url: result.audio_url,
+            duration: result.duration,
+            message: successMessage,
+          }),
+          returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n🎭 Voice: ${voiceName} (${voice})\n🌍 Language: ${language}\n⏱️ Duration: ${result.duration ? `${result.duration}s` : 'N/A'}\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.audio_url}" type="audio/wav">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.audio_url})\n💾 Task ID: ${taskId}`,
+        };
+      } else {
+        const errorMessage = result.error || 'Audio generation failed with unknown error';
+        throw new Error(errorMessage);
       }
-
-      const result = await response.json();
-      
-      if (result.status !== 'success') {
-        throw new Error(result.detail || 'Audio generation failed');
-      }
-
-      const provider = voice_id.startsWith('gemini_') ? 'Google Gemini' : 'ElevenLabs';
-      const successMessage = `Successfully generated audio using ${provider}`;
-
-      return {
-        llmContent: JSON.stringify({
-          success: true,
-          text,
-          voice_id,
-          language: mappedLanguage,
-          instructions,
-          conversation_id: result.conversation_id,
-          audio_url: result.gcs_file_path,
-          duration_seconds: result.duration_seconds,
-          provider: result.provider,
-          voice_name: result.voice_name,
-          message: successMessage,
-        }),
-        returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n🎭 Voice: ${result.voice_name} (${voice_id})\n🌍 Language: ${mappedLanguage}${instructions ? `\n📝 Instructions: ${instructions}` : ''}\n⏱️ Duration: ${result.duration_seconds?.toFixed(1)}s\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.gcs_file_path}" type="audio/mpeg">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.gcs_file_path})${result.conversation_id ? `\n💾 Conversation ID: ${result.conversation_id}` : ''}`,
-      };
 
     } catch (error) {
       const errorMessage =
@@ -297,5 +213,104 @@ export class AudioGeneratorTool extends BaseTool<
         returnDisplay: `❌ Error generating audio: ${errorMessage}`,
       };
     }
+  }
+
+  /**
+   * Initiate audio generation by calling the unified AI service.
+   */
+  private async initiateAudioGeneration(params: {
+    text: string;
+    voice: string;
+    language: string;
+  }): Promise<string> {
+    const response = await fetch(`${this.apiUrl}/api/v1/audio/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey,
+      },
+      body: JSON.stringify({
+        text: params.text,
+        voice: params.voice,
+        provider: 'gemini_chirp',
+        language: params.language,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to initiate audio generation: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    if (!result.task_id) {
+      throw new Error('No task ID returned from audio generation service');
+    }
+
+    return result.task_id;
+  }
+
+  /**
+   * Poll for audio generation completion.
+   */
+  private async pollForCompletion(taskId: string, signal: AbortSignal): Promise<{
+    success: boolean;
+    audio_url?: string;
+    duration?: number;
+    error?: string;
+  }> {
+    const maxAttempts = 20; // ~40 seconds with 2-second intervals
+    const pollInterval = 2000; // 2 seconds
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (signal.aborted) {
+        throw new Error('Audio generation was cancelled');
+      }
+
+      try {
+        const response = await fetch(`${this.apiUrl}/api/v1/audio/task/${taskId}`, {
+          headers: {
+            'X-API-Key': this.apiKey,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to check status: ${response.status}`);
+        }
+
+        const status = await response.json();
+        
+        console.log(`[AudioGeneratorTool] Task ${taskId} status: ${status.status}`);
+
+        if (status.status === 'completed') {
+          return {
+            success: true,
+            audio_url: status.audio_url,
+            duration: status.duration,
+          };
+        } else if (status.status === 'failed') {
+          return {
+            success: false,
+            error: status.error || 'Audio generation failed',
+          };
+        }
+
+        // Still processing, wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      } catch (error) {
+        console.error(`[AudioGeneratorTool] Error polling task ${taskId}:`, error);
+        
+        // On the last attempt, throw the error
+        if (attempt === maxAttempts - 1) {
+          throw error;
+        }
+        
+        // Otherwise, wait and retry
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+
+    throw new Error(`Audio generation timed out after ${maxAttempts * pollInterval / 1000} seconds`);
   }
 }

@@ -54,7 +54,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       expect(tool.validateToolParams(params)).toBeNull();
@@ -64,7 +64,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: '',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const error = tool.validateToolParams(params);
@@ -75,7 +75,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'a'.repeat(6001),
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const error = tool.validateToolParams(params);
@@ -86,7 +86,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const error = tool.validateToolParams(params);
@@ -96,7 +96,7 @@ describe('AudioGeneratorTool', () => {
     it('should validate Chirp_gemini voices correctly', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
-        voice_id: 'gemini_zephyr',
+        voice: 'zephyr',
       };
 
       expect(tool.validateToolParams(params)).toBeNull();
@@ -105,7 +105,7 @@ describe('AudioGeneratorTool', () => {
     it('should return error for invalid Chirp_gemini voice', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
-        voice_id: 'invalid-voice',
+        voice: 'invalid-voice',
       };
 
       const error = tool.validateToolParams(params);
@@ -117,7 +117,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const error = unconfiguredTool.validateToolParams(params);
@@ -130,7 +130,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const description = tool.getDescription(params);
@@ -142,7 +142,7 @@ describe('AudioGeneratorTool', () => {
     it('should return correct description for Chirp_gemini method', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
-        voice_id: 'gemini_zephyr',
+        voice: 'zephyr',
       };
 
       const description = tool.getDescription(params);
@@ -157,7 +157,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: '',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const signal = new AbortController().signal;
@@ -171,7 +171,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -179,7 +179,6 @@ describe('AudioGeneratorTool', () => {
         json: async () => ({
           status: 'success',
           gcs_file_path: 'gs://bucket/audio.wav',
-          conversation_id: 'test-conversation-id',
         }),
       });
 
@@ -197,8 +196,7 @@ describe('AudioGeneratorTool', () => {
           body: JSON.stringify({
             text: 'Hello world',
             language: 'en',
-            voice_id: '9BWtsMINqrJLrRacOk9x',
-            conversation_id: undefined,
+            voice: 'zephyr',
           }),
         }),
       );
@@ -212,7 +210,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -232,7 +230,7 @@ describe('AudioGeneratorTool', () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
         language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
+        voice: 'zephyr',
       };
 
       const controller = new AbortController();
@@ -244,38 +242,11 @@ describe('AudioGeneratorTool', () => {
       expect(result.returnDisplay).toContain('cancelled');
     });
 
-    it('should pass conversation_id when provided', async () => {
-      const params: AudioGeneratorParams = {
-        text: 'Hello world',
-        language: 'en',
-        voice_id: '9BWtsMINqrJLrRacOk9x',
-        conversation_id: 'test-conv-id',
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          status: 'success',
-          gcs_file_path: 'gs://bucket/audio.wav',
-          conversation_id: 'test-conv-id',
-        }),
-      });
-
-      const signal = new AbortController().signal;
-      await tool.execute(params, signal);
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          body: expect.stringContaining('"conversation_id":"test-conv-id"'),
-        }),
-      );
-    });
 
     it('should use Chirp_gemini method when specified', async () => {
       const params: AudioGeneratorParams = {
         text: 'Hello world',
-        voice_id: 'gemini_zephyr',
+        voice: 'zephyr',
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -283,7 +254,6 @@ describe('AudioGeneratorTool', () => {
         json: async () => ({
           status: 'success',
           gcs_file_path: 'gs://bucket/audio.wav',
-          conversation_id: null,
         }),
       });
 
