@@ -74,7 +74,7 @@ async function testVoice(
 
   const params = {
     text: testText,
-    voice_id: voiceId,
+    voice: voiceId,
     language: langCode,
     ...(instructions && provider === 'gemini' ? { instructions } : {}),
   };

@@ -49,7 +49,6 @@
     "simple-git": "^3.28.0",
     "strip-ansi": "^7.1.0",
     "undici": "^7.10.0",
-    "web-image-scraper": "file:../../../packages/web-image-scraper",
     "ws": "^8.18.0"
   },
   "devDependencies": {

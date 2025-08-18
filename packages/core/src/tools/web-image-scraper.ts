@@ -156,8 +156,10 @@ export class WebImageScraperTool extends BaseTool<
       let WebImageScraper;
       try {
         // Try to import from the web-image-scraper package
-        const scraperModule = await import('web-image-scraper');
-        WebImageScraper = scraperModule.WebImageScraper;
+        // TODO: Fix web-image-scraper package dependency
+        // const scraperModule = await import('web-image-scraper');
+        // WebImageScraper = scraperModule.WebImageScraper;
+        throw new Error('Web image scraper package not found. The web-image-scraper dependency needs to be properly configured.');
       } catch (importError) {
         console.error('[WebImageScraperTool] Failed to import web-image-scraper:', importError);
         throw new Error('Web image scraper package not found. Please ensure the web-image-scraper package is properly installed and built.');

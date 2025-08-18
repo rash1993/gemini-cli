@@ -78,7 +78,7 @@ async function testSingleVoice() {
   // Prepare parameters
   const params = {
     text,
-    voice_id: voiceId,
+    voice: voiceId,
     language,
     ...(instructions && voiceId.startsWith('gemini_') ? { instructions } : {}),
   };
