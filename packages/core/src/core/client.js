@@ -29,8 +29,8 @@ export class GeminiClient {
     model;
     embeddingModel;
     generateContentConfig = {
-        temperature: 0,
-        topP: 1,
+        temperature: 1,
+        topP: 0.95,
     };
     MAX_TURNS = 100;
     constructor(config) {

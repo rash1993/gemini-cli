@@ -51,8 +51,8 @@ export class GeminiClient {
   private model: string;
   private embeddingModel: string;
   private generateContentConfig: GenerateContentConfig = {
-    temperature: 0,
-    topP: 1,
+    temperature: 1,
+    topP: 0.95,
   };
   private readonly MAX_TURNS = 100;
 
