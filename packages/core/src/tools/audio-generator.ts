@@ -16,6 +16,7 @@ export interface AudioGeneratorParams {
   text: string;
   voice: string;
   language?: string;
+  instructions?: string;
 }
 
 /**
@@ -45,10 +46,11 @@ export class AudioGeneratorTool extends BaseTool<
       AudioGeneratorTool.Name,
       'Audio Generator',
       'Generates high-quality audio from text using Gemini Chirp TTS with 30 professional voices ' +
-      'supporting 20 languages. Features include: 6 English-only voices optimized for specific use cases ' +
-      '(narration, marketing, meditation, podcasts, business, kids content) and 24 multilingual voices ' +
-      'covering European, Asian, Middle Eastern, and Romance languages. Perfect for audiobooks, podcasts, ' +
-      'presentations, educational content, and international applications.',
+      'supporting 20 languages. Features voice style instructions for controlling emotion, tone, and delivery ' +
+      '(cheerful, calm, professional, dramatic, angry, sad, etc.). Includes 6 English-only voices optimized ' +
+      'for specific use cases (narration, marketing, meditation, podcasts, business, kids content) and ' +
+      '24 multilingual voices covering European, Asian, Middle Eastern, and Romance languages. ' +
+      'Perfect for audiobooks, podcasts, presentations, educational content, and international applications.',
       {
         type: 'object',
         properties: {
@@ -83,6 +85,17 @@ export class AudioGeneratorTool extends BaseTool<
               'nl (Dutch), sv (Swedish), ca (Catalan), ro (Romanian). Defaults to en. ' +
               'Note: Voice must support the selected language.',
             default: 'en',
+          },
+          instructions: {
+            type: 'string',
+            description:
+              'Optional voice style instructions to modify delivery. Examples: ' +
+              '"Speak cheerfully and enthusiastically", "Use a calm and soothing tone", ' +
+              '"Sound professional and authoritative", "Speak slowly and clearly", ' +
+              '"Add excitement and energy", "Use a dramatic storytelling voice", ' +
+              '"Sound friendly and conversational", "Speak with empathy and warmth", ' +
+              '"Deliver with anger/frustration", "Sound sad or melancholic". ' +
+              'This allows fine control over emotion, pace, and tone of the generated speech.',
           },
         },
         required: ['text', 'voice'],
@@ -149,8 +162,11 @@ export class AudioGeneratorTool extends BaseTool<
     const voice = voicesData.voices.find((v: any) => v.id === params.voice);
     const voiceName = voice ? voice.name : params.voice;
     const language = params.language || 'en';
+    const instructionsInfo = params.instructions 
+      ? `, instructions: "${params.instructions.substring(0, 30)}${params.instructions.length > 30 ? '...' : ''}"`
+      : '';
     
-    return `Generating audio using Gemini Chirp: "${text}" (voice: ${voiceName}, language: ${language})`;
+    return `Generating audio using Gemini Chirp: "${text}" (voice: ${voiceName}, language: ${language}${instructionsInfo})`;
   }
 
   async execute(
@@ -169,6 +185,7 @@ export class AudioGeneratorTool extends BaseTool<
       text,
       voice,
       language = 'en',
+      instructions,
     } = params;
 
     try {
@@ -186,6 +203,7 @@ export class AudioGeneratorTool extends BaseTool<
         text,
         voice,
         language,
+        instructions,
       });
 
       console.log(`[AudioGeneratorTool] Audio generation task created: ${taskId}`);
@@ -206,11 +224,12 @@ export class AudioGeneratorTool extends BaseTool<
             voice,
             voice_name: voiceName,
             language,
+            ...(instructions && { instructions }),
             audio_url: result.audio_url,
             duration: result.duration,
             message: successMessage,
           }),
-          returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n🎭 Voice: ${voiceName} (${voice})\n🌍 Language: ${language}\n⏱️ Duration: ${result.duration ? `${result.duration}s` : 'N/A'}\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.audio_url}" type="audio/wav">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.audio_url})\n💾 Task ID: ${taskId}`,
+          returnDisplay: `✅ ${successMessage}\n\n🗣️ Text: ${text}\n🎭 Voice: ${voiceName} (${voice})\n🌍 Language: ${language}${instructions ? `\n🎯 Instructions: ${instructions}` : ''}\n⏱️ Duration: ${result.duration ? `${result.duration}s` : 'N/A'}\n\n<audio controls style="width: 100%; margin: 10px 0;">\n  <source src="${result.audio_url}" type="audio/wav">\n  Your browser does not support the audio element.\n</audio>\n\n🔗 [Download Audio File](${result.audio_url})\n💾 Task ID: ${taskId}`,
         };
       } else {
         const errorMessage = result.error || 'Audio generation failed with unknown error';
@@ -242,6 +261,7 @@ export class AudioGeneratorTool extends BaseTool<
     text: string;
     voice: string;
     language: string;
+    instructions?: string;
   }): Promise<string> {
     const response = await fetch(`${this.apiUrl}/api/v1/audio/generate`, {
       method: 'POST',
@@ -254,6 +274,7 @@ export class AudioGeneratorTool extends BaseTool<
         voice: params.voice,
         provider: 'gemini_chirp',
         language: params.language,
+        ...(params.instructions && { instructions: params.instructions }),
       }),
     });
 
