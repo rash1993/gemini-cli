@@ -12,52 +12,25 @@ import { Config } from '../config/config.js';
  * Parameters for transcribing audio files.
  */
 export interface TranscribeAudioParams {
-  file_path: string;
-  language_code?: string;
-  enable_automatic_punctuation?: boolean;
-  enable_speaker_diarization?: boolean;
-  diarization_speaker_count?: number;
-  enable_word_time_offsets?: boolean;
+  audio_file: string;
+  language?: string;
+  enable_punctuation?: boolean;
+  enable_word_timing?: boolean;
+  enable_diarization?: boolean;
+  speaker_count?: number;
 }
 
 /**
- * Parameters for uploading and transcribing audio data.
- */
-export interface TranscribeAudioDataParams {
-  audio_data: string; // base64 encoded audio data
-  language_code?: string;
-  enable_automatic_punctuation?: boolean;
-  enable_speaker_diarization?: boolean;
-  diarization_speaker_count?: number;
-  enable_word_time_offsets?: boolean;
-}
-
-/**
- * Parameters for listing supported languages.
- */
-export interface ListLanguagesParams {
-  // No parameters needed
-}
-
-/**
- * Union type for all transcription operation parameters.
- */
-export type TranscriptionParams =
-  | TranscribeAudioParams
-  | TranscribeAudioDataParams
-  | ListLanguagesParams;
-
-/**
- * Transcription tool that converts audio to text using a FastAPI backend service.
- * Integrates with existing MediaLoop.AI transcription infrastructure.
+ * Transcription tool that converts audio to text using the unified AI service.
+ * Uses Google Speech-to-Text V2 for high-quality transcription with word-level timing.
  */
 export class TranscriptionTool extends BaseTool<
-  TranscriptionParams,
+  TranscribeAudioParams,
   ToolResult
 > {
   static readonly Name: string = 'transcription';
-  private backendUrl: string;
-  private backendApiKey: string;
+  private apiUrl: string = 'http://35.238.235.218';
+  private apiKey: string = 'videoagent@backend1qaz0okm';
 
   private static readonly SUPPORTED_LANGUAGES = [
     'en-US',
@@ -78,140 +51,106 @@ export class TranscriptionTool extends BaseTool<
     super(
       TranscriptionTool.Name,
       'Audio Transcription',
-      'Transcribes audio files or audio data to text using Google Speech-to-Text. Supports multiple languages, speaker diarization, and various transcription features. Use "transcribe_audio" for files, "transcribe_audio_data" for base64 data, or "list_supported_languages" to see available languages.',
+      'Transcribes audio files or URLs to text using Google Speech-to-Text V2. ' +
+      'Supports multiple languages, speaker diarization, and word-level timing data. ' +
+      'Accepts audio files as URLs (https:// or gs://) or local file paths. ' +
+      'Word timing data provides precise timestamps for each word, essential for subtitle generation and audio synchronization. ' +
+      'Maximum duration: 480 minutes. Supported formats: MP3, WAV, FLAC, M4A, OGG.',
       {
         type: 'object',
         properties: {
-          operation: {
-            type: 'string',
-            enum: [
-              'transcribe_audio',
-              'transcribe_audio_data',
-              'list_supported_languages',
-            ],
-            description: 'The transcription operation to perform',
-          },
-          file_path: {
+          audio_file: {
             type: 'string',
             description:
-              'Path to the audio file to transcribe (required for transcribe_audio)',
+              'Path or URL to the audio file. Accepts: ' +
+              '1) Public URLs (https://example.com/audio.mp3), ' +
+              '2) Google Cloud Storage paths (gs://bucket/audio.wav), ' +
+              '3) Local file paths for upload',
           },
-          audio_data: {
-            type: 'string',
-            description:
-              'Base64 encoded audio data (required for transcribe_audio_data)',
-          },
-          language_code: {
+          language: {
             type: 'string',
             enum: TranscriptionTool.SUPPORTED_LANGUAGES,
             description:
               'Language code for transcription (e.g., en-US, es-ES). Defaults to en-US',
             default: 'en-US',
           },
-          enable_automatic_punctuation: {
+          enable_punctuation: {
             type: 'boolean',
             description:
               'Enable automatic punctuation in transcription results. Defaults to true',
             default: true,
           },
-          enable_speaker_diarization: {
+          enable_word_timing: {
+            type: 'boolean',
+            description:
+              'Enable word-level timestamps. Provides start/end times for each word. ' +
+              'Essential for subtitles, captions, and audio synchronization. Defaults to true',
+            default: true,
+          },
+          enable_diarization: {
             type: 'boolean',
             description:
               'Enable speaker diarization to identify different speakers. Defaults to false',
             default: false,
           },
-          diarization_speaker_count: {
+          speaker_count: {
             type: 'number',
             minimum: 2,
             maximum: 10,
             description:
-              'Number of speakers for diarization (2-10). Only used if speaker diarization is enabled',
-          },
-          enable_word_time_offsets: {
-            type: 'boolean',
-            description:
-              'Enable word-level time offsets in transcription results. Defaults to false',
-            default: false,
+              'Number of speakers for diarization (2-10). Only used if diarization is enabled',
           },
         },
-        required: ['operation'],
+        required: ['audio_file'],
       },
     );
 
-    // Get backend configuration from environment or config
-    this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendApiKey =
-      process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
-
-    if (!this.backendUrl || !this.backendApiKey) {
-      console.warn(
-        '[TranscriptionTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.',
-      );
-    }
+    // Allow override from environment if needed
+    this.apiUrl = process.env.UNIFIED_AI_URL || this.apiUrl;
+    this.apiKey = process.env.UNIFIED_AI_KEY || this.apiKey;
   }
 
   validateParams(params: any): string | null {
-    if (!this.backendUrl || !this.backendApiKey) {
-      return 'Backend URL or API key not configured. Please set BACKEND_URL and BACKEND_API_KEY environment variables.';
+    if (!this.apiUrl || !this.apiKey) {
+      return 'API URL or key not configured.';
     }
 
     if (!params || typeof params !== 'object') {
       return 'Parameters must be an object';
     }
 
-    const { operation } = params;
-    if (!operation || typeof operation !== 'string') {
-      return 'Operation must be specified as a string';
-    }
-
-    switch (operation) {
-      case 'transcribe_audio':
-        if (!params.file_path || typeof params.file_path !== 'string') {
-          return 'For transcribe_audio operation, file_path must be a non-empty string';
-        }
-        break;
-      case 'transcribe_audio_data':
-        if (!params.audio_data || typeof params.audio_data !== 'string') {
-          return 'For transcribe_audio_data operation, audio_data must be a non-empty string';
-        }
-        break;
-      case 'list_supported_languages':
-        // No additional validation needed
-        break;
-      default:
-        return `Unsupported operation: ${operation}. Supported operations are: transcribe_audio, transcribe_audio_data, list_supported_languages`;
+    if (!params.audio_file || typeof params.audio_file !== 'string') {
+      return 'audio_file must be a non-empty string (URL or file path)';
     }
 
     if (
-      params.language_code &&
-      !TranscriptionTool.SUPPORTED_LANGUAGES.includes(params.language_code)
+      params.language &&
+      !TranscriptionTool.SUPPORTED_LANGUAGES.includes(params.language)
     ) {
-      return `Unsupported language: ${params.language_code}. Supported languages: ${TranscriptionTool.SUPPORTED_LANGUAGES.join(', ')}`;
+      return `Unsupported language: ${params.language}. Supported languages: ${TranscriptionTool.SUPPORTED_LANGUAGES.join(', ')}`;
     }
 
     if (
-      params.diarization_speaker_count &&
-      (params.diarization_speaker_count < 2 ||
-        params.diarization_speaker_count > 10)
+      params.speaker_count &&
+      (params.speaker_count < 2 || params.speaker_count > 10)
     ) {
-      return 'diarization_speaker_count must be between 2 and 10.';
+      return 'speaker_count must be between 2 and 10.';
     }
 
     return null;
   }
 
   getDescription(params: any): string {
-    const { operation } = params;
-    switch (operation) {
-      case 'transcribe_audio':
-        return `Transcribing audio file: ${params.file_path}`;
-      case 'transcribe_audio_data':
-        return 'Transcribing provided audio data';
-      case 'list_supported_languages':
-        return 'Listing supported transcription languages';
-      default:
-        return `Performing transcription operation: ${operation}`;
-    }
+    const source = params.audio_file.substring(0, 50);
+    const language = params.language || 'en-US';
+    const features = [];
+    
+    if (params.enable_word_timing) features.push('word timing');
+    if (params.enable_diarization) features.push('speaker diarization');
+    if (params.enable_punctuation) features.push('punctuation');
+    
+    const featuresStr = features.length > 0 ? ` with ${features.join(', ')}` : '';
+    return `Transcribing audio: ${source}... (${language}${featuresStr})`;
   }
 
   async execute(params: any, signal: AbortSignal): Promise<ToolResult> {
@@ -223,327 +162,163 @@ export class TranscriptionTool extends BaseTool<
       };
     }
 
-    const { operation } = params;
+    const {
+      audio_file,
+      language = 'en-US',
+      enable_punctuation = true,
+      enable_word_timing = true,
+      enable_diarization = false,
+      speaker_count,
+    } = params;
 
     try {
       if (signal.aborted) {
         throw new Error('Transcription operation was cancelled');
       }
 
-      let result: any;
-      let message: string;
+      console.log(
+        `[TranscriptionTool] Starting transcription for: "${audio_file.substring(0, 50)}..."`,
+      );
 
-      switch (operation) {
-        case 'transcribe_audio':
-          result = await this.transcribeAudioFile(params, signal);
-          message = `Audio file transcribed successfully: ${params.file_path}`;
-          break;
-        case 'transcribe_audio_data':
-          result = await this.transcribeAudioData(params, signal);
-          message = 'Audio data transcribed successfully';
-          break;
-        case 'list_supported_languages':
-          result = this.listSupportedLanguages();
-          message = 'Retrieved list of supported languages';
-          break;
-        default:
-          throw new Error(`Unsupported operation: ${operation}`);
-      }
+      // Step 1: Initiate transcription
+      const taskId = await this.initiateTranscription({
+        audio_file,
+        language,
+        enable_punctuation,
+        enable_word_timing,
+        enable_diarization,
+        speaker_count,
+      });
 
-      return {
-        llmContent: JSON.stringify({
+      console.log(
+        `[TranscriptionTool] Transcription task created: ${taskId}`,
+      );
+
+      // Step 2: Poll for completion
+      const result = await this.pollForCompletion(taskId, signal);
+
+      if (result.success && result.transcript_text) {
+        const successMessage = `Successfully transcribed audio`;
+
+        const response: any = {
           success: true,
-          operation,
-          result,
-          message,
-        }),
-        returnDisplay: this.formatOutput(result, operation, params),
-      };
+          task_id: taskId,
+          transcript_text: result.transcript_text,
+          transcript_url: result.transcript_url,
+          language: result.language || language,
+          word_count: result.word_count,
+          duration_seconds: result.duration_seconds,
+          message: successMessage,
+        };
+
+        // Add word timing URL if available
+        if (result.word_timing_url) {
+          response.word_timing_url = result.word_timing_url;
+          response.word_timing_info = 'Word-level timestamps available for subtitle generation and synchronization';
+        }
+
+        // Format display output
+        let displayOutput = `✅ ${successMessage}\n\n`;
+        displayOutput += `📝 Transcript:\n"${result.transcript_text}"\n\n`;
+        displayOutput += `🗣️ Language: ${result.language || language}\n`;
+        displayOutput += `📊 Word Count: ${result.word_count || 'N/A'}\n`;
+        displayOutput += `⏱️ Duration: ${result.duration_seconds ? `${result.duration_seconds}s` : 'N/A'}\n`;
+        
+        if (result.transcript_url) {
+          displayOutput += `\n📄 Full Transcript: ${result.transcript_url}`;
+        }
+        
+        if (result.word_timing_url) {
+          displayOutput += `\n⏰ Word Timing Data: ${result.word_timing_url}`;
+          displayOutput += `\n💡 Word timing data includes start/end timestamps for each word`;
+        }
+        
+        displayOutput += `\n\n💾 Task ID: ${taskId}`;
+
+        return {
+          llmContent: JSON.stringify(response),
+          returnDisplay: displayOutput,
+        };
+      } else {
+        const errorMessage =
+          result.error || 'Transcription failed with unknown error';
+        throw new Error(errorMessage);
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       console.error(
-        `[TranscriptionTool] Error executing ${operation}:`,
+        `[TranscriptionTool] Error during transcription:`,
         errorMessage,
       );
       return {
         llmContent: JSON.stringify({
           success: false,
-          error: `Transcription operation failed: ${errorMessage}`,
+          error: `Transcription failed: ${errorMessage}`,
         }),
-        returnDisplay: `❌ Error: Transcription operation failed: ${errorMessage}`,
+        returnDisplay: `❌ Error: Transcription failed: ${errorMessage}`,
       };
     }
-  }
-
-  private async transcribeAudioFile(
-    params: TranscribeAudioParams,
-    signal: AbortSignal,
-  ): Promise<any> {
-    const {
-      file_path,
-      language_code = 'en-US',
-      enable_automatic_punctuation = true,
-      enable_speaker_diarization = false,
-      diarization_speaker_count,
-      enable_word_time_offsets = false,
-    } = params;
-
-    console.log(
-      `[TranscriptionTool] Starting transcription for file: "${file_path}"`,
-    );
-
-    // Step 1: Create transcription session
-    const sessionId = await this.createTranscriptionSession({
-      audio_file_path: file_path,
-      language_code,
-      enable_automatic_punctuation,
-      enable_speaker_diarization,
-      diarization_speaker_count,
-      enable_word_time_offsets,
-    });
-
-    console.log(
-      `[TranscriptionTool] Transcription session created: ${sessionId}`,
-    );
-
-    // Step 2: Start transcription
-    await this.startTranscription(sessionId);
-
-    // Step 3: Poll for completion
-    const result = await this.pollForTranscriptionCompletion(sessionId, signal);
-
-    if (result.success && result.transcript_text) {
-      const successMessage = `Successfully transcribed audio file: ${file_path}`;
-
-      return {
-        session_id: sessionId,
-        status: result.status,
-        transcript_text: result.transcript_text,
-        gcs_transcript_path: result.gcs_transcript_path,
-        language_code,
-        file_path,
-        message: successMessage,
-      };
-    } else {
-      const errorMessage =
-        result.error || 'Transcription failed with unknown error';
-      throw new Error(errorMessage);
-    }
-  }
-
-  private async transcribeAudioData(
-    params: TranscribeAudioDataParams,
-    signal: AbortSignal,
-  ): Promise<any> {
-    const {
-      audio_data,
-      language_code = 'en-US',
-      enable_automatic_punctuation = true,
-      enable_speaker_diarization = false,
-      diarization_speaker_count,
-      enable_word_time_offsets = false,
-    } = params;
-
-    // Basic validation of base64 data
-    if (!audio_data.match(/^[A-Za-z0-9+/=]+$/)) {
-      throw new Error('Invalid base64 audio data format');
-    }
-
-    console.log(
-      `[TranscriptionTool] Starting transcription for uploaded audio data`,
-    );
-
-    // Step 1: Create transcription session with audio data upload
-    const sessionId = await this.createTranscriptionSessionWithUpload({
-      audio_data,
-      language_code,
-      enable_automatic_punctuation,
-      enable_speaker_diarization,
-      diarization_speaker_count,
-      enable_word_time_offsets,
-    });
-
-    console.log(
-      `[TranscriptionTool] Transcription session created: ${sessionId}`,
-    );
-
-    // Step 2: Start transcription
-    await this.startTranscription(sessionId);
-
-    // Step 3: Poll for completion
-    const result = await this.pollForTranscriptionCompletion(sessionId, signal);
-
-    if (result.success && result.transcript_text) {
-      const successMessage = `Successfully transcribed uploaded audio data`;
-
-      return {
-        session_id: sessionId,
-        status: result.status,
-        transcript_text: result.transcript_text,
-        gcs_transcript_path: result.gcs_transcript_path,
-        language_code,
-        message: successMessage,
-      };
-    } else {
-      const errorMessage =
-        result.error || 'Transcription failed with unknown error';
-      throw new Error(errorMessage);
-    }
-  }
-
-  private listSupportedLanguages(): any {
-    return {
-      languages: TranscriptionTool.SUPPORTED_LANGUAGES,
-      count: TranscriptionTool.SUPPORTED_LANGUAGES.length,
-      note: 'Language codes in format like en-US, es-ES, etc.',
-    };
   }
 
   /**
-   * Create a transcription session by calling the FastAPI service.
+   * Initiate transcription by calling the unified AI service.
    */
-  private async createTranscriptionSession(params: {
-    audio_file_path: string;
-    language_code: string;
-    enable_automatic_punctuation: boolean;
-    enable_speaker_diarization: boolean;
-    diarization_speaker_count?: number;
-    enable_word_time_offsets: boolean;
+  private async initiateTranscription(params: {
+    audio_file: string;
+    language: string;
+    enable_punctuation: boolean;
+    enable_word_timing: boolean;
+    enable_diarization: boolean;
+    speaker_count?: number;
   }): Promise<string> {
-    const response = await fetch(`${this.backendUrl}/transcription/sessions`, {
+    const response = await fetch(`${this.apiUrl}/api/v1/transcription/generate`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'BACKEND-API-KEY': this.backendApiKey,
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey,
       },
-      body: new URLSearchParams({
-        audio_file_path: params.audio_file_path,
-        language_code: params.language_code,
-        enable_automatic_punctuation:
-          params.enable_automatic_punctuation.toString(),
-        enable_speaker_diarization:
-          params.enable_speaker_diarization.toString(),
-        enable_word_time_offsets: params.enable_word_time_offsets.toString(),
-        store_type: 'mongodb',
-        ...(params.diarization_speaker_count && {
-          diarization_speaker_count:
-            params.diarization_speaker_count.toString(),
-        }),
+      body: JSON.stringify({
+        audio_file: params.audio_file,
+        language: params.language,
+        enable_punctuation: params.enable_punctuation,
+        enable_word_timing: params.enable_word_timing,
+        enable_diarization: params.enable_diarization,
+        speaker_count: params.speaker_count,
+        provider: 'google_speech_v2',
+        priority: 'normal',
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `Failed to create transcription session: ${response.status} ${errorText}`,
+        `Failed to initiate transcription: ${response.status} ${errorText}`,
       );
     }
 
     const result = await response.json();
-    if (!result.session_id) {
-      throw new Error('No session ID returned from transcription service');
+    if (!result.task_id) {
+      throw new Error('No task ID returned from transcription service');
     }
 
-    return result.session_id;
-  }
-
-  /**
-   * Create a transcription session with file upload by calling the FastAPI service.
-   */
-  private async createTranscriptionSessionWithUpload(params: {
-    audio_data: string;
-    language_code: string;
-    enable_automatic_punctuation: boolean;
-    enable_speaker_diarization: boolean;
-    diarization_speaker_count?: number;
-    enable_word_time_offsets: boolean;
-  }): Promise<string> {
-    // Convert base64 to blob for upload
-    const audioBlob = new Blob([Buffer.from(params.audio_data, 'base64')], {
-      type: 'audio/wav',
-    });
-
-    const formData = new FormData();
-    formData.append('audio_file', audioBlob, 'uploaded_audio.wav');
-    formData.append('language_code', params.language_code);
-    formData.append(
-      'enable_automatic_punctuation',
-      params.enable_automatic_punctuation.toString(),
-    );
-    formData.append(
-      'enable_speaker_diarization',
-      params.enable_speaker_diarization.toString(),
-    );
-    formData.append(
-      'enable_word_time_offsets',
-      params.enable_word_time_offsets.toString(),
-    );
-    formData.append('store_type', 'mongodb');
-
-    if (params.diarization_speaker_count) {
-      formData.append(
-        'diarization_speaker_count',
-        params.diarization_speaker_count.toString(),
-      );
-    }
-
-    const response = await fetch(`${this.backendUrl}/transcription/sessions`, {
-      method: 'POST',
-      headers: {
-        'BACKEND-API-KEY': this.backendApiKey,
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Failed to create transcription session with upload: ${response.status} ${errorText}`,
-      );
-    }
-
-    const result = await response.json();
-    if (!result.session_id) {
-      throw new Error('No session ID returned from transcription service');
-    }
-
-    return result.session_id;
-  }
-
-  /**
-   * Start transcription for a session.
-   */
-  private async startTranscription(sessionId: string): Promise<void> {
-    const response = await fetch(
-      `${this.backendUrl}/transcription/sessions/${sessionId}/transcribe`,
-      {
-        method: 'POST',
-        headers: {
-          'BACKEND-API-KEY': this.backendApiKey,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Failed to start transcription: ${response.status} ${errorText}`,
-      );
-    }
+    return result.task_id;
   }
 
   /**
    * Poll for transcription completion.
    */
-  private async pollForTranscriptionCompletion(
-    sessionId: string,
+  private async pollForCompletion(
+    taskId: string,
     signal: AbortSignal,
   ): Promise<{
     success: boolean;
     transcript_text?: string;
-    gcs_transcript_path?: string;
-    status?: string;
+    transcript_url?: string;
+    word_timing_url?: string;
+    language?: string;
+    word_count?: number;
+    duration_seconds?: number;
     error?: string;
   }> {
     const maxAttempts = 60; // 5 minutes with 5-second intervals
@@ -556,10 +331,10 @@ export class TranscriptionTool extends BaseTool<
 
       try {
         const response = await fetch(
-          `${this.backendUrl}/transcription/sessions/${sessionId}`,
+          `${this.apiUrl}/api/v1/transcription/task/${taskId}`,
           {
             headers: {
-              'BACKEND-API-KEY': this.backendApiKey,
+              'X-API-Key': this.apiKey,
             },
           },
         );
@@ -573,17 +348,20 @@ export class TranscriptionTool extends BaseTool<
         const status = await response.json();
 
         console.log(
-          `[TranscriptionTool] Session ${sessionId} status: ${status.stage} - ${status.status}`,
+          `[TranscriptionTool] Task ${taskId} status: ${status.status}`,
         );
 
-        if (status.stage === 'completed' && status.status === 'success') {
+        if (status.status === 'completed') {
           return {
             success: true,
             transcript_text: status.transcript_text,
-            gcs_transcript_path: status.gcs_transcript_path,
-            status: status.status,
+            transcript_url: status.transcript_url,
+            word_timing_url: status.word_timing_url,
+            language: status.language,
+            word_count: status.word_count,
+            duration_seconds: status.duration_seconds,
           };
-        } else if (status.stage === 'error' || status.status === 'failed') {
+        } else if (status.status === 'failed') {
           return {
             success: false,
             error: status.error || 'Transcription failed',
@@ -594,7 +372,7 @@ export class TranscriptionTool extends BaseTool<
         await new Promise((resolve) => setTimeout(resolve, pollInterval));
       } catch (error) {
         console.error(
-          `[TranscriptionTool] Error polling session ${sessionId}:`,
+          `[TranscriptionTool] Error polling task ${taskId}:`,
           error,
         );
 
@@ -611,24 +389,5 @@ export class TranscriptionTool extends BaseTool<
     throw new Error(
       `Transcription timed out after ${(maxAttempts * pollInterval) / 1000} seconds`,
     );
-  }
-
-  private formatOutput(result: any, operation: string, params: any): string {
-    switch (operation) {
-      case 'transcribe_audio':
-      case 'transcribe_audio_data':
-        const transcriptText = result.transcript_text;
-        const languageCode =
-          result.language_code || params.language_code || 'en-US';
-        const source = result.file_path || 'uploaded audio';
-        const sessionId = result.session_id;
-        const gcsPath = result.gcs_transcript_path;
-
-        return `✅ Transcription completed:\n\n"${transcriptText}"\n\n🗣️ Language: ${languageCode}\n📁 Source: ${source}\n🆔 Session ID: ${sessionId}${gcsPath ? `\n💾 GCS Path: ${gcsPath}` : ''}`;
-      case 'list_supported_languages':
-        return `📋 Supported Languages (${result.count}):\n\n${result.languages.join(', ')}\n\n💡 ${result.note}`;
-      default:
-        return JSON.stringify(result, null, 2);
-    }
   }
 }
