@@ -351,12 +351,16 @@ export class GeminiChat {
     const startTime = Date.now();
 
     try {
+      // Prepare the complete request object
+      const completeRequest = {
+        model: this.config.getModel(),
+        contents: requestContents,
+        config: { ...this.generationConfig, ...params.config },
+      };
+
+
       const apiCall = () =>
-        this.contentGenerator.generateContentStream({
-          model: this.config.getModel(),
-          contents: requestContents,
-          config: { ...this.generationConfig, ...params.config },
-        });
+        this.contentGenerator.generateContentStream(completeRequest);
 
       // Note: Retrying streams can be complex. If generateContentStream itself doesn't handle retries
       // for transient issues internally before yielding the async generator, this retry will re-initiate

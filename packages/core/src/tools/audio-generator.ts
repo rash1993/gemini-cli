@@ -300,7 +300,7 @@ export class AudioGeneratorTool extends BaseTool<
     duration?: number;
     error?: string;
   }> {
-    const maxAttempts = 20; // ~40 seconds with 2-second intervals
+    const maxAttempts = 150; // ~5 minutes with 2-second intervals
     const pollInterval = 2000; // 2 seconds
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {

@@ -48,6 +48,7 @@ export enum GeminiEventType {
   Error = 'error',
   ChatCompressed = 'chat_compressed',
   Thought = 'thought',
+  UsageMetadata = 'usage_metadata',
 }
 
 export interface StructuredError {
@@ -93,6 +94,11 @@ export type ServerGeminiThoughtEvent = {
   value: ThoughtSummary;
 };
 
+export type ServerGeminiUsageMetadataEvent = {
+  type: GeminiEventType.UsageMetadata;
+  value: any; // Using any for now, can be typed more specifically if needed
+};
+
 export type ServerGeminiToolCallRequestEvent = {
   type: GeminiEventType.ToolCallRequest;
   value: ToolCallRequestInfo;
@@ -136,7 +142,8 @@ export type ServerGeminiStreamEvent =
   | ServerGeminiUserCancelledEvent
   | ServerGeminiErrorEvent
   | ServerGeminiChatCompressedEvent
-  | ServerGeminiThoughtEvent;
+  | ServerGeminiThoughtEvent
+  | ServerGeminiUsageMetadataEvent;
 
 // A turn manages the agentic loop turn within the server context.
 export class Turn {
@@ -167,6 +174,14 @@ export class Turn {
           return;
         }
         this.debugResponses.push(resp);
+
+        // Check for usage metadata in the response
+        if (resp.usageMetadata) {
+          yield {
+            type: GeminiEventType.UsageMetadata,
+            value: resp.usageMetadata,
+          };
+        }
 
         const thoughtPart = resp.candidates?.[0]?.content?.parts?.[0];
         if (thoughtPart?.thought) {
