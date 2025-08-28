@@ -35,6 +35,7 @@ import { GCSDownloadTool } from '../tools/gcs-download.js';
 import { SceneTimingTool } from '../tools/scene-timing.js';
 import { InitiateSlidesTool } from '../tools/initiate-slides.js';
 import { WebImageScraperTool } from '../tools/web-image-scraper.js';
+import { VideoWorkflowGuideTool } from '../tools/video-workflow-guide.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { GitService } from '../services/gitService.js';
@@ -527,6 +528,7 @@ export function createToolRegistry(config: Config): Promise<ToolRegistry> {
   registerCoreTool(SceneTimingTool, config);
   registerCoreTool(InitiateSlidesTool);
   registerCoreTool(WebImageScraperTool);
+  registerCoreTool(VideoWorkflowGuideTool);
   return (async () => {
     await registry.discoverTools();
     return registry;

@@ -27,9 +27,13 @@ export interface ProjectMetadata {
 export interface SlideData {
   scene_id: string;
   title: string;
-  script_text: string;
   layout_type: string;
-  visual_description: string;
+  content_description: string;
+  facts_used: string[];
+  message: string;
+  component_mapping: Record<string, string>;
+  script_text: string;
+  sync_points: string[];
   estimated_duration?: number;
 }
 
@@ -88,13 +92,29 @@ export class InitiateSlidesTool extends BaseTool<InitiateSlidesParams, ToolResul
                   properties: {
                     scene_id: { type: 'string', description: 'Unique identifier for the slide (e.g., slide-001)' },
                     title: { type: 'string', description: 'Title of the slide' },
+                    layout_type: { type: 'string', description: 'Layout template to use for this slide (must be from available layouts in design_instructions.md)' },
+                    content_description: { type: 'string', description: 'Detailed description of what this slide presents and its purpose in the narrative' },
+                    facts_used: { 
+                      type: 'array', 
+                      items: { type: 'string' },
+                      description: 'Array of facts from video-context.md used in this slide' 
+                    },
+                    message: { type: 'string', description: 'Key message or takeaway from this slide' },
+                    component_mapping: { 
+                      type: 'object',
+                      additionalProperties: { type: 'string' },
+                      description: 'Mapping of layout component IDs to actual content (e.g., heading, subheading, main_image)' 
+                    },
                     script_text: { type: 'string', description: 'Voice-over script text for this slide' },
-                    layout_type: { type: 'string', description: 'Layout template to use for this slide' },
-                    visual_description: { type: 'string', description: 'Detailed description of visual elements' },
+                    sync_points: { 
+                      type: 'array', 
+                      items: { type: 'string' },
+                      description: 'Key words/phrases in script to synchronize with visual animations' 
+                    },
                     estimated_duration: { type: 'number', description: 'Estimated duration for this slide in seconds' }
                   },
-                  required: ['scene_id', 'title', 'script_text', 'layout_type', 'visual_description'],
-                  description: 'Individual slide data'
+                  required: ['scene_id', 'title', 'layout_type', 'content_description', 'facts_used', 'message', 'component_mapping', 'script_text', 'sync_points'],
+                  description: 'Individual slide data with complete information for slide creation'
                 },
                 minItems: 1,
                 description: 'Array of all slides in the project'
@@ -154,14 +174,26 @@ export class InitiateSlidesTool extends BaseTool<InitiateSlidesParams, ToolResul
       if (!slide.title || typeof slide.title !== 'string') {
         return `Slide ${i + 1} must have a valid title string.`;
       }
-      if (!slide.script_text || typeof slide.script_text !== 'string') {
-        return `Slide ${i + 1} must have a valid script_text string.`;
-      }
       if (!slide.layout_type || typeof slide.layout_type !== 'string') {
         return `Slide ${i + 1} must have a valid layout_type string.`;
       }
-      if (!slide.visual_description || typeof slide.visual_description !== 'string') {
-        return `Slide ${i + 1} must have a valid visual_description string.`;
+      if (!slide.content_description || typeof slide.content_description !== 'string') {
+        return `Slide ${i + 1} must have a valid content_description string.`;
+      }
+      if (!slide.facts_used || !Array.isArray(slide.facts_used)) {
+        return `Slide ${i + 1} must have a valid facts_used array.`;
+      }
+      if (!slide.message || typeof slide.message !== 'string') {
+        return `Slide ${i + 1} must have a valid message string.`;
+      }
+      if (!slide.component_mapping || typeof slide.component_mapping !== 'object') {
+        return `Slide ${i + 1} must have a valid component_mapping object.`;
+      }
+      if (!slide.script_text || typeof slide.script_text !== 'string') {
+        return `Slide ${i + 1} must have a valid script_text string.`;
+      }
+      if (!slide.sync_points || !Array.isArray(slide.sync_points)) {
+        return `Slide ${i + 1} must have a valid sync_points array.`;
       }
     }
 
@@ -231,9 +263,13 @@ export class InitiateSlidesTool extends BaseTool<InitiateSlidesParams, ToolResul
           const infoJson = {
             scene_id: slide.scene_id,
             title: slide.title,
-            script_text: slide.script_text,
             layout_type: slide.layout_type,
-            visual_description: slide.visual_description,
+            content_description: slide.content_description,
+            facts_used: slide.facts_used,
+            message: slide.message,
+            component_mapping: slide.component_mapping,
+            script_text: slide.script_text,
+            sync_points: slide.sync_points,
             start_time: null,
             end_time: null,
             word_wise_timings: [],

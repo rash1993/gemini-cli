@@ -60,6 +60,7 @@ export * from './tools/transcription.js';
 export * from './tools/mcp-client.js';
 export * from './tools/mcp-tool.js';
 export * from './tools/initiate-slides.js';
+export * from './tools/video-workflow-guide.js';
 
 // Export telemetry functions
 export * from './telemetry/index.js';
