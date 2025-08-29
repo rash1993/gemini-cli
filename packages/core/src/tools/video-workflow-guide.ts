@@ -238,23 +238,35 @@ export class VideoWorkflowGuideTool extends BaseTool<VideoWorkflowGuideParams, T
         },
         {
           id: 'generate_images',
-          action: 'Generate images for slide',
+          action: 'Generate and track images for slide',
           command: 'generate_image with appropriate prompts',
-          details: 'CRITICAL: Images must NOT contain embedded text. Focus on visual concepts, patterns, and illustrations. Store URLs in info.json. Do not ask to creaate complex diagrams with text. Keep prompts specific to avoid generic images. Use aspect ratios matching layout. Use appropriate colors so that the generated images look vsially appealing when placed in the slide. For charts/graphs we DO NOT generate images. We create them using charting libraries in the next step.',
-          validation: 'Images generated successfully',
+          details: 'Generate images for visual elements. For EACH generated asset, track: 1) A descriptive identifier for where it will be used (e.g., "hero_image", "background", "icon_1"), 2) The generation prompt used, 3) The returned asset URL. Keep this data for later storage in info.json. Images must NOT contain embedded text. Focus on visual concepts, patterns, and illustrations. Keep prompts specific to avoid generic images. Use aspect ratios matching layout. Use appropriate colors so that the generated images look visually appealing when placed in the slide. For charts/graphs we DO NOT generate images. We create them using charting libraries in the next step.',
+          validation: 'Images generated with tracking data',
           critical: true
         },
         {
           id: 'create_html',
           action: 'Create slide.html',
-          details: 'Fill/replace ALL components per plan (never remove components). Create self-contained HTML with all CSS/JS inline. Follow design system exactly. Text should be visually engaging (headings, bullets, numbers) not script verbatim. Use generated images. For charts/graphs, use charting libraries (e.g., Chart.js, D3.js) to create interactive visualizations based on facts_used data. Ensure visual hierarchy: 60-70% visual, 30-40% text. Add WAAPI animations for visual interest (fade-ins, slide-ins, zooms). Ensure readability and accessibility (contrast, font size). Save as slides/slide-XXX/slide.html.',
-          validation: 'slide.html created'
+          details: 'Fill/replace ALL components per plan (never remove components). Create self-contained HTML with all CSS/JS inline. Follow design system exactly. Text should be visually engaging (headings, bullets, numbers) not script verbatim. Use generated images. When placing each asset in HTML, note its actual usage context (e.g., if used in <img id="hero-visual">, the component_id would be "hero-visual"). For CSS background-images, use the containing element\'s id or class as reference. Track where each generated asset is actually placed in the HTML structure. For charts/graphs, use charting libraries (e.g., Chart.js, D3.js) to create interactive visualizations based on facts_used data. Ensure visual hierarchy: 60-70% visual, 30-40% text. Add WAAPI animations for visual interest (fade-ins, slide-ins, zooms). Ensure readability and accessibility (contrast, font size). Save as slides/slide-XXX/slide.html.',
+          validation: 'slide.html created with assets properly placed'
+        },
+        {
+          id: 'asset_tracking_note',
+          action: 'Understanding asset tracking',
+          details: 'IMPORTANT: The asset_component_id should reflect how the asset is actually used in the HTML, not predetermined mappings. Examples: If an image is in <div class="hero-image">, use "hero-image". If it\'s in <div id="slide-background">, use "slide-background". If it\'s inline styled with background-image on an element with class "visual-content", use "visual-content". This allows the UI to locate assets by searching the HTML for these identifiers.',
+          validation: 'Asset tracking approach understood'
         },
         {
           id: 'create_info',
-          action: 'Create info.json',
-          details: 'Store all data from plan.json for this slide, generated image URLs, component mappings, script text for later synchronization.',
-          validation: 'info.json created'
+          action: 'Create comprehensive info.json with asset tracking',
+          details: 'Store all slide data INCLUDING asset tracking. For each generated asset used in the HTML, add to "generated_assets" array with: asset_component_id (the HTML element id/class where it\'s used), asset_url (the generated URL), and asset_prompt (the prompt used to generate it). Also maintain "image_urls" and "video_urls" arrays for UI compatibility. The asset_component_id should match how the asset is referenced in the HTML (e.g., "slide-bg" for a div with id="slide-bg", or "image-placeholder" for an element with class="image-placeholder"). Example structure: generated_assets: [{asset_component_id: "image-placeholder", asset_url: "https://...", asset_prompt: "professional sales team..."}]',
+          validation: 'info.json created with complete asset tracking'
+        },
+        {
+          id: 'document_assets',
+          action: 'Document asset usage in info.json',
+          details: 'Ensure each asset in generated_assets has: 1) asset_component_id matching the HTML element where it\'s used (could be an id, class, or data attribute), 2) asset_url pointing to the generated asset, 3) asset_prompt containing the original generation prompt. This enables the UI to locate and replace assets by finding them in the HTML. Also populate legacy image_urls array with {image_id: asset_component_id, image_url: asset_url} for backward compatibility.',
+          validation: 'Asset documentation complete and accurate'
         },
         {
           id: 'script_alignment',
@@ -282,7 +294,8 @@ export class VideoWorkflowGuideTool extends BaseTool<VideoWorkflowGuideParams, T
           video_status: 'slides',
           progress: {
             currentStage: 'slides',
-            slidesCompleted: 'N'
+            slidesCompleted: 'N',
+            assetsGenerated: 'N'
           }
         }
       },
