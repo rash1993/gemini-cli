@@ -336,14 +336,14 @@ export class VideoWorkflowGuideTool extends BaseTool<VideoWorkflowGuideParams, T
         },
         {
           id: 'create_metadata',
-          action: 'Create audio metadata',
-          details: 'Store audio URL, duration, voice name in voiceover-audio.json',
-          validation: 'Metadata created'
+          action: 'Update audio metadata',
+          details: 'Append new audio version to voiceover-audio.json array with format: {language_code, voice_id, url, duration, created_at, instructions}',
+          validation: 'Audio metadata appended'
         },
         {
           id: 'update_state',
           action: 'Update state.json',
-          details: 'Update voice_over field with audio URL, duration, and voice name. Set video_status to "audio".',
+          details: 'Update voice_over field with latest audio info. Set video_status to "audio".',
           validation: 'State updated'
         },
         {
