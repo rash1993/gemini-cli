@@ -35,8 +35,8 @@ export interface SceneTimingParams {
  */
 export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
   static readonly Name: string = 'map_scenes_to_audio';
-  private backendUrl: string;
-  private backendApiKey: string;
+  private apiUrl: string = 'http://35.238.235.218';
+  private apiKey: string = 'videoagent@backend1qaz0okm';
 
   constructor(private readonly config?: Config) {
     super(
@@ -75,8 +75,8 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
             minimum: 0,
             maximum: 1,
             description:
-              'Threshold for scene-to-word matching (0.0-1.0). Higher values require more exact matches. Defaults to 0.9',
-            default: 0.9,
+              'Threshold for scene-to-word matching (0.0-1.0). Higher values require more exact matches. Defaults to 0.7',
+            default: 0.7,
           },
           language_code: {
             type: 'string',
@@ -94,21 +94,20 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       },
     );
 
-    // Get backend configuration from environment or config
-    this.backendUrl = process.env.BACKEND_URL || config?.getBackendUrl() || '';
-    this.backendApiKey =
-      process.env.BACKEND_API_KEY || config?.getBackendApiKey() || '';
+    // Allow override from environment if needed
+    this.apiUrl = process.env.UNIFIED_AI_URL || this.apiUrl;
+    this.apiKey = process.env.UNIFIED_AI_KEY || this.apiKey;
 
-    if (!this.backendUrl || !this.backendApiKey) {
+    if (!this.apiUrl || !this.apiKey) {
       console.warn(
-        '[SceneTimingTool] Backend URL or API key not configured. Set BACKEND_URL and BACKEND_API_KEY environment variables.',
+        '[SceneTimingTool] API URL or key not configured. Set UNIFIED_AI_URL and UNIFIED_AI_KEY environment variables.',
       );
     }
   }
 
   validateToolParams(params: SceneTimingParams): string | null {
-    if (!this.backendUrl || !this.backendApiKey) {
-      return 'Backend URL or API key not configured. Please set BACKEND_URL and BACKEND_API_KEY environment variables.';
+    if (!this.apiUrl || !this.apiKey) {
+      return 'API URL or key not configured. Please set UNIFIED_AI_URL and UNIFIED_AI_KEY environment variables.';
     }
 
     if (
@@ -175,7 +174,7 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
 
   getDescription(params: SceneTimingParams): string {
     const sceneCount = params.scenes.length;
-    const threshold = params.similarity_threshold || 0.9;
+    const threshold = params.similarity_threshold || 0.7;
     const language = params.language_code || 'en-US';
     return `Mapping ${sceneCount} scene${sceneCount > 1 ? 's' : ''} to audio timings (threshold: ${threshold}, language: ${language})`;
   }
@@ -195,7 +194,7 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
     const {
       scenes,
       audio_url,
-      similarity_threshold = 0.9,
+      similarity_threshold = 0.7,
       language_code = 'en-US',
       output_directory,
     } = params;
@@ -210,28 +209,25 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
         `[SceneTimingTool] Starting scene timing mapping for ${scenes.length} scenes`,
       );
 
-      // Step 1: Create session
-      const sessionId = await this.createSession({
+      // Step 1: Initiate scene timing task
+      const taskId = await this.initiateSceneTiming({
         scenes,
         audio_url,
         similarity_threshold,
         language_code,
       });
 
-      console.log(`[SceneTimingTool] Session created: ${sessionId}`);
+      console.log(`[SceneTimingTool] Scene timing task created: ${taskId}`);
 
-      // Step 2: Start processing
-      await this.startProcessing(sessionId);
-
-      // Step 3: Poll for completion
-      const result = await this.pollForCompletion(sessionId, signal);
+      // Step 2: Poll for completion
+      const result = await this.pollForCompletion(taskId, signal);
 
       if (
         result.success &&
-        result.scene_mappings &&
-        result.scene_mappings.length > 0
+        result.scenes &&
+        result.scenes.length > 0
       ) {
-        const mappedCount = result.scene_mappings.length;
+        const mappedCount = result.mapped_scenes || result.scenes.length;
         const unmappedCount = result.unmapped_scenes?.length || 0;
         const processingTime = result.processing_time || 0;
 
@@ -243,7 +239,7 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
             const slidesDir = path.join(output_directory, 'slides');
             await fs.mkdir(slidesDir, { recursive: true });
             
-            for (const scene of result.scene_mappings) {
+            for (const scene of result.scenes) {
               // Create slide directory
               const slideDir = path.join(slidesDir, scene.scene_id);
               await fs.mkdir(slideDir, { recursive: true });
@@ -267,12 +263,13 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
                 script_text: scene.content || existingInfo.script_text,
                 start_time: scene.start_time,
                 end_time: scene.end_time,
-                word_wise_timings: scene.words.map((w) => ({
+                duration: scene.duration,
+                confidence: scene.confidence,
+                word_wise_timings: scene.words ? scene.words.map((w) => ({
                   word: w.word,
                   start_time: w.start_time,
-                  end_time: w.end_time,
-                  confidence: w.confidence
-                })),
+                  end_time: w.end_time
+                })) : [],
                 generation_metadata: {
                   ...existingInfo.generation_metadata,
                   last_modified: new Date().toISOString(),
@@ -297,15 +294,15 @@ Warning: Could not write timing files to ${output_directory}.`;
         return {
           llmContent: JSON.stringify({
             success: true,
-            session_id: sessionId,
+            task_id: taskId,
             scenes_mapped: mappedCount,
             scenes_unmapped: unmappedCount,
             processing_time: processingTime,
-            scene_mappings: result.scene_mappings,
+            scenes: result.scenes,
             unmapped_scenes: result.unmapped_scenes || [],
             message: successMessage,
           }),
-          returnDisplay: `✅ ${successMessage}\n\n📊 Results:\n- Mapped: ${mappedCount} scenes\n- Unmapped: ${unmappedCount} scenes\n- Processing time: ${processingTime.toFixed(2)}s\n\n🎬 Scene Timings:\n${result.scene_mappings.map((scene, i) => `${i + 1}. ${scene.scene_id}: ${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s`).join('\n')}\n\n💾 Session ID: ${sessionId}`,
+          returnDisplay: `✅ ${successMessage}\n\n📊 Results:\n- Mapped: ${mappedCount} scenes\n- Unmapped: ${unmappedCount} scenes\n- Audio Duration: ${result.audio_duration ? result.audio_duration.toFixed(2) + 's' : 'N/A'}\n\n🎬 Scene Timings:\n${result.scenes.map((scene, i) => `${i + 1}. ${scene.scene_id}: ${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s (${scene.duration.toFixed(2)}s)`).join('\n')}\n\n💾 Task ID: ${taskId}`,
         };
       } else {
         const errorMessage =
@@ -331,28 +328,27 @@ Warning: Could not write timing files to ${output_directory}.`;
   }
 
   /**
-   * Create a new scene text mapping session
+   * Initiate scene timing task by calling the unified AI service
    */
-  private async createSession(params: {
+  private async initiateSceneTiming(params: {
     scenes: SceneInput[];
     audio_url: string;
     similarity_threshold: number;
     language_code: string;
   }): Promise<string> {
     const response = await fetch(
-      `${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions`,
+      `${this.apiUrl}/api/v1/scene-timing/map`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'BACKEND-API-KEY': this.backendApiKey,
+          'X-API-Key': this.apiKey,
         },
         body: JSON.stringify({
-          audio_gcs_url: params.audio_url,
           scenes: params.scenes,
-          similarity_threshold: params.similarity_threshold,
+          audio_url: params.audio_url,
           language_code: params.language_code,
-          store_type: 'mongodb',
+          similarity_threshold: params.similarity_threshold,
         }),
       },
     );
@@ -360,67 +356,49 @@ Warning: Could not write timing files to ${output_directory}.`;
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `Failed to create session: ${response.status} ${errorText}`,
+        `Failed to initiate scene timing: ${response.status} ${errorText}`,
       );
     }
 
     const result = await response.json();
-    if (!result.session_id) {
-      throw new Error('No session ID returned from scene timing service');
+    if (!result.task_id) {
+      throw new Error('No task ID returned from scene timing service');
     }
 
-    return result.session_id;
-  }
-
-  /**
-   * Start processing a session
-   */
-  private async startProcessing(sessionId: string): Promise<void> {
-    const response = await fetch(
-      `${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions/${sessionId}/process`,
-      {
-        method: 'POST',
-        headers: {
-          'BACKEND-API-KEY': this.backendApiKey,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Failed to start processing: ${response.status} ${errorText}`,
-      );
-    }
+    return result.task_id;
   }
 
   /**
    * Poll for scene timing completion
    */
   private async pollForCompletion(
-    sessionId: string,
+    taskId: string,
     signal: AbortSignal,
   ): Promise<{
     success: boolean;
-    scene_mappings?: Array<{
+    audio_duration?: number;
+    total_scenes?: number;
+    mapped_scenes?: number;
+    scenes?: Array<{
       scene_id: string;
       title?: string;
       start_time: number;
       end_time: number;
-      content: string;
-      words: Array<{
+      duration: number;
+      confidence: number;
+      content?: string;
+      words?: Array<{
         word: string;
         start_time: number;
         end_time: number;
-        confidence: number;
       }>;
     }>;
     unmapped_scenes?: string[];
     processing_time?: number;
     error?: string;
   }> {
-    const maxAttempts = 120; // 10 minutes with 5-second intervals
-    const pollInterval = 5000; // 5 seconds
+    const maxAttempts = 300; // 15 minutes with 3-second intervals
+    const pollInterval = 3000; // 3 seconds
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (signal.aborted) {
@@ -429,10 +407,10 @@ Warning: Could not write timing files to ${output_directory}.`;
 
       try {
         const response = await fetch(
-          `${this.backendUrl}/scene_segment/map_scenes_to_audio/sessions/${sessionId}`,
+          `${this.apiUrl}/api/v1/scene-timing/result/${taskId}`,
           {
             headers: {
-              'BACKEND-API-KEY': this.backendApiKey,
+              'X-API-Key': this.apiKey,
             },
           },
         );
@@ -441,31 +419,64 @@ Warning: Could not write timing files to ${output_directory}.`;
           throw new Error(`Failed to check status: ${response.status}`);
         }
 
-        const sessionData = await response.json();
+        const result = await response.json();
 
-        console.log(
-          `[SceneTimingTool] Session ${sessionId} status: ${sessionData.stage} (${sessionData.status})`,
-        );
-
-        if (sessionData.stage === 'completed') {
+        // Check if we have a successful response with scene_mappings
+        // The API returns {success: true, scene_mappings: [...]} when complete
+        if (result.success === true && result.scene_mappings) {
+          console.log(
+            `[SceneTimingTool] Task ${taskId} completed successfully`,
+          );
           return {
             success: true,
-            scene_mappings: sessionData.scene_mappings || [],
-            unmapped_scenes: sessionData.unmapped_scenes || [],
-            processing_time: sessionData.processing_time || 0,
+            audio_duration: result.transcription?.duration_seconds,
+            total_scenes: result.scene_mappings?.length,
+            mapped_scenes: result.scene_mappings?.length,
+            scenes: result.scene_mappings || [],
+            unmapped_scenes: result.unmapped_scenes || [],
+            processing_time: result.processing_time || 0,
           };
-        } else if (sessionData.stage === 'error') {
+        } else if (result.success === false || result.error) {
+          console.log(
+            `[SceneTimingTool] Task ${taskId} failed: ${result.error}`,
+          );
           return {
             success: false,
-            error: sessionData.error || 'Scene timing mapping failed',
+            error: result.error || 'Scene timing mapping failed',
           };
+        } else if (result.status) {
+          // Handle status-based responses if they exist
+          console.log(
+            `[SceneTimingTool] Task ${taskId} status: ${result.status}`,
+          );
+          if (result.status === 'completed') {
+            return {
+              success: true,
+              audio_duration: result.audio_duration,
+              total_scenes: result.total_scenes,
+              mapped_scenes: result.mapped_scenes,
+              scenes: result.scenes || [],
+              unmapped_scenes: result.unmapped_scenes || [],
+              processing_time: result.processing_time || 0,
+            };
+          } else if (result.status === 'failed') {
+            return {
+              success: false,
+              error: result.error || 'Scene timing mapping failed',
+            };
+          }
+        } else {
+          // Still processing
+          console.log(
+            `[SceneTimingTool] Task ${taskId} still processing...`,
+          );
         }
 
         // Still processing, wait before next poll
         await new Promise((resolve) => setTimeout(resolve, pollInterval));
       } catch (error) {
         console.error(
-          `[SceneTimingTool] Error polling session ${sessionId}:`,
+          `[SceneTimingTool] Error polling task ${taskId}:`,
           error,
         );
 
