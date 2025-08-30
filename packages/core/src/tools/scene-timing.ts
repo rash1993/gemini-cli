@@ -210,17 +210,23 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
       );
 
       // Step 1: Initiate scene timing task
-      const taskId = await this.initiateSceneTiming({
+      const initResult = await this.initiateSceneTiming({
         scenes,
         audio_url,
         similarity_threshold,
         language_code,
       });
 
-      console.log(`[SceneTimingTool] Scene timing task created: ${taskId}`);
-
-      // Step 2: Poll for completion
-      const result = await this.pollForCompletion(taskId, signal);
+      // Check if the result is already complete
+      let result;
+      if (initResult.isComplete) {
+        console.log(`[SceneTimingTool] Scene timing completed immediately`);
+        result = initResult.result;
+      } else {
+        console.log(`[SceneTimingTool] Scene timing task created: ${initResult.taskId}`);
+        // Step 2: Poll for completion
+        result = await this.pollForCompletion(initResult.taskId!, signal);
+      }
 
       if (
         result.success &&
@@ -265,7 +271,7 @@ export class SceneTimingTool extends BaseTool<SceneTimingParams, ToolResult> {
                 end_time: scene.end_time,
                 duration: scene.duration,
                 confidence: scene.confidence,
-                word_wise_timings: scene.words ? scene.words.map((w) => ({
+                word_wise_timings: scene.words ? scene.words.map((w: any) => ({
                   word: w.word,
                   start_time: w.start_time,
                   end_time: w.end_time
@@ -294,7 +300,7 @@ Warning: Could not write timing files to ${output_directory}.`;
         return {
           llmContent: JSON.stringify({
             success: true,
-            task_id: taskId,
+            task_id: initResult.taskId || 'immediate',
             scenes_mapped: mappedCount,
             scenes_unmapped: unmappedCount,
             processing_time: processingTime,
@@ -302,7 +308,7 @@ Warning: Could not write timing files to ${output_directory}.`;
             unmapped_scenes: result.unmapped_scenes || [],
             message: successMessage,
           }),
-          returnDisplay: `✅ ${successMessage}\n\n📊 Results:\n- Mapped: ${mappedCount} scenes\n- Unmapped: ${unmappedCount} scenes\n- Audio Duration: ${result.audio_duration ? result.audio_duration.toFixed(2) + 's' : 'N/A'}\n\n🎬 Scene Timings:\n${result.scenes.map((scene, i) => `${i + 1}. ${scene.scene_id}: ${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s (${scene.duration.toFixed(2)}s)`).join('\n')}\n\n💾 Task ID: ${taskId}`,
+          returnDisplay: `✅ ${successMessage}\n\n📊 Results:\n- Mapped: ${mappedCount} scenes\n- Unmapped: ${unmappedCount} scenes\n- Audio Duration: ${result.audio_duration ? result.audio_duration.toFixed(2) + 's' : 'N/A'}\n\n🎬 Scene Timings:\n${result.scenes.map((scene: any, i: number) => `${i + 1}. ${scene.scene_id}: ${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s (${scene.duration.toFixed(2)}s)`).join('\n')}\n\n💾 Task ID: ${initResult.taskId || 'immediate'}`,
         };
       } else {
         const errorMessage =
@@ -329,13 +335,14 @@ Warning: Could not write timing files to ${output_directory}.`;
 
   /**
    * Initiate scene timing task by calling the unified AI service
+   * Returns either a task ID for polling or the complete result if processing was immediate
    */
   private async initiateSceneTiming(params: {
     scenes: SceneInput[];
     audio_url: string;
     similarity_threshold: number;
     language_code: string;
-  }): Promise<string> {
+  }): Promise<{ isComplete: boolean; taskId?: string; result?: any }> {
     const response = await fetch(
       `${this.apiUrl}/api/v1/scene-timing/map`,
       {
@@ -361,11 +368,53 @@ Warning: Could not write timing files to ${output_directory}.`;
     }
 
     const result = await response.json();
+    
+    // Check if we got a task_id
     if (!result.task_id) {
       throw new Error('No task ID returned from scene timing service');
     }
+    
+    // If status is "completed", the results are ready to fetch immediately
+    // But they're not included in this response - we need to fetch them
+    if (result.status === 'completed') {
+      console.log('[SceneTimingTool] Task completed immediately, fetching results...');
+      
+      // Fetch the results right away
+      const resultResponse = await fetch(
+        `${this.apiUrl}/api/v1/scene-timing/result/${result.task_id}`,
+        {
+          headers: {
+            'X-API-Key': this.apiKey,
+          },
+        },
+      );
+      
+      if (resultResponse.ok) {
+        const resultData = await resultResponse.json();
+        
+        // Check if we have successful results
+        if (resultData.success === true && resultData.scene_mappings) {
+          return {
+            isComplete: true,
+            result: {
+              success: true,
+              audio_duration: resultData.transcription?.duration_seconds,
+              total_scenes: resultData.scene_mappings?.length,
+              mapped_scenes: resultData.scene_mappings?.length,
+              scenes: resultData.scene_mappings || [],
+              unmapped_scenes: resultData.unmapped_scenes || [],
+              processing_time: resultData.processing_time || 0,
+            }
+          };
+        }
+      }
+    }
 
-    return result.task_id;
+    // Status is not "completed" or fetch failed, need to poll
+    return {
+      isComplete: false,
+      taskId: result.task_id
+    };
   }
 
   /**
@@ -416,7 +465,35 @@ Warning: Could not write timing files to ${output_directory}.`;
         );
 
         if (!response.ok) {
-          throw new Error(`Failed to check status: ${response.status}`);
+          // Handle 400 errors gracefully - task might still be initializing
+          if (response.status === 400) {
+            console.log(
+              `[SceneTimingTool] Task ${taskId} not ready yet (HTTP 400), continuing to poll...`,
+            );
+            // Wait before next poll
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            continue;
+          }
+          
+          // Handle gateway/server errors (502, 503, 504) - these are temporary
+          if (response.status === 502 || response.status === 503 || response.status === 504) {
+            console.log(
+              `[SceneTimingTool] Server error ${response.status} for task ${taskId}, will retry...`,
+            );
+            // Wait longer for server errors
+            await new Promise((resolve) => setTimeout(resolve, pollInterval * 2));
+            continue;
+          }
+          
+          // For other errors, log but continue polling for a few attempts
+          console.error(
+            `[SceneTimingTool] Error checking task ${taskId}: HTTP ${response.status}`,
+          );
+          
+          // Don't throw immediately - continue polling
+          // Wait before next poll
+          await new Promise((resolve) => setTimeout(resolve, pollInterval));
+          continue;
         }
 
         const result = await response.json();

@@ -8,6 +8,7 @@ import { BaseTool, ToolResult } from './tools.js';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { Config } from '../config/config.js';
 import voicesData from '../data/voices.json' with { type: 'json' };
+import { audioDeduplicator } from './audio-generator-dedup.js';
 
 /**
  * Parameters for the AudioGeneratorTool.
