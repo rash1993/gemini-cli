@@ -56,6 +56,24 @@ export interface StageInstructions {
 
 /**
  * Video Workflow Guide Tool - Provides step-by-step instructions for video generation stages
+ * 
+ * CRITICAL: plan.json slide structure must include:
+ * {
+ *   scene_id: "slide-001",
+ *   title: "Hook - Opening Question",  // Narrative role, NOT display text
+ *   layout_type: "layout_hero",
+ *   content_description: "Opening slide that captures attention",
+ *   facts_used: ["fact 1", "fact 2"],
+ *   message: "Key message for this slide",
+ *   component_mapping: {  // Actual display content goes here
+ *     heading: "Why Sales Matter?",  // This is what appears on screen
+ *     subheading: "Master the fundamentals",
+ *     image: "sales_chart.png"
+ *   },
+ *   script_text: "Have you ever wondered why...",
+ *   sync_points: ["wondered", "sales", "success"],
+ *   estimated_duration: 10
+ * }
  */
 export class VideoWorkflowGuideTool extends BaseTool<VideoWorkflowGuideParams, ToolResult> {
   static readonly Name = 'video_workflow_step_wise_guide';
@@ -165,8 +183,8 @@ export class VideoWorkflowGuideTool extends BaseTool<VideoWorkflowGuideParams, T
         {
           id: 'create_plan',
           action: 'Create plan.json',
-          details: 'Create plan.json file. For each slide: Select layout template from style/layout_*.html, list ALL components (heading, subheading, images, charts, bullets) from the selected component, map specific content to each component, ensure visual dominance (60-70% visual, 30-40% text). Include scene_id, title, layout_type, content_description, facts_used, message, component_mapping, script_text, sync_points, estimated_duration.',
-          validation: 'plan.json created with all slides'
+          details: 'Create plan.json file. For each slide MUST include: scene_id (e.g., "slide-001"), title (narrative purpose like "Hook - Opening Question", NOT the display text), layout_type (from style/layout_*.html), content_description (what the slide presents), facts_used (array of facts from video-context.md), message (key takeaway), component_mapping (object mapping layout component IDs to actual content - this is where display text goes, e.g., {heading: "Your Title Text", subheading: "Your Subtitle"}), script_text (voiceover for this slide), sync_points (array of keywords to sync), estimated_duration (in seconds). CRITICAL: The "title" field describes the slide\'s role in the story arc, while component_mapping contains the actual displayed content.',
+          validation: 'plan.json created with all required fields including title at root level'
         },
         {
           id: 'write_script',
